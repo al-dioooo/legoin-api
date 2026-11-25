@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     scan_workers: int = 1
     """Scans run at the same time. One by default: torch already uses every core."""
 
+    ideas_timeout_s: float = 30.0
+    """A request for ideas still unanswered after this long fails with `504 timeout`."""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

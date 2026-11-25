@@ -12,10 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from legoin_api import __version__, errors
 from legoin_api.config import PipelineKind, Settings
+from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
 from legoin_api.pipeline import Pipeline
-from legoin_api.routes import health, photos, scan_jobs, scans
+from legoin_api.routes import health, ideas, photos, scan_jobs, scans
 from legoin_api.store import Store
 
 log = logging.getLogger("legoin_api")
@@ -32,8 +33,14 @@ def load_pipeline(settings: Settings) -> Pipeline:
     raise RuntimeError("LEGOIN_PIPELINE=models isn't available yet.")
 
 
-def create_app(settings: Settings | None = None, *, pipeline: Pipeline | None = None) -> FastAPI:
-    """The app. Tests pass their own `pipeline`; otherwise `LEGOIN_PIPELINE` picks it."""
+def create_app(
+    settings: Settings | None = None,
+    *,
+    pipeline: Pipeline | None = None,
+    idea_generator: IdeaGenerator | None = None,
+) -> FastAPI:
+    """The app. Tests pass their own `pipeline` and `idea_generator`; otherwise
+    `LEGOIN_PIPELINE` picks the pipeline, and ideas come from the templates."""
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -47,6 +54,8 @@ def create_app(settings: Settings | None = None, *, pipeline: Pipeline | None = 
             timeout_s=settings.scan_timeout_s,
             workers=settings.scan_workers,
         )
+        # Until an LLM provider is chosen (contract open question 1).
+        app.state.ideas = idea_generator or TemplateIdeaGenerator()
         yield
         app.state.jobs.shutdown()
         app.state.store.close()
@@ -67,5 +76,6 @@ def create_app(settings: Settings | None = None, *, pipeline: Pipeline | None = 
     app.include_router(health.router)
     app.include_router(scan_jobs.router)
     app.include_router(scans.router)
+    app.include_router(ideas.router)
     app.include_router(photos.router)
     return app

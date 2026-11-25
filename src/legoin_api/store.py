@@ -12,7 +12,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from legoin_api.schemas import Detection, IdeaSet, Photo, Scan, Theme
+from legoin_api.ideas.generator import ShownIdea
+from legoin_api.ids import utc_now
+from legoin_api.inventory import to_inventory
+from legoin_api.schemas import Detection, IdeaSet, PartCount, Photo, Scan, Theme
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -27,6 +30,17 @@ CREATE TABLE IF NOT EXISTS scans (
     ideas TEXT
 );
 CREATE INDEX IF NOT EXISTS scans_by_device ON scans (device_id, created_at);
+
+-- Every idea written for a scan, not only the latest set, so `exclude` can name older ones.
+CREATE TABLE IF NOT EXISTS ideas_written (
+    scan_id TEXT NOT NULL REFERENCES scans (id) ON DELETE CASCADE,
+    idea_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    theme TEXT NOT NULL,
+    title TEXT NOT NULL,
+    written_at TEXT NOT NULL,
+    PRIMARY KEY (scan_id, idea_id)
+);
 """
 
 
@@ -149,6 +163,62 @@ class Store:
                         _ideas_json(scan.ideas),
                         scan.id,
                     ),
+                )
+                self._db.execute("COMMIT")
+                return scan
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def written_ideas(self, device_id: str, scan_id: str) -> list[ShownIdea]:
+        """Every idea written for one of this device's scans, oldest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT i.* FROM ideas_written i JOIN scans s ON s.id = i.scan_id"
+                " WHERE i.scan_id = ? AND s.device_id = ? ORDER BY i.written_at, i.rowid",
+                (scan_id, device_id),
+            ).fetchall()
+        return [ShownIdea(row["idea_id"], row["key"], row["theme"], row["title"]) for row in rows]
+
+    def keep_ideas(
+        self,
+        device_id: str,
+        scan_id: str,
+        ideas: IdeaSet,
+        keys: list[str],
+        checked_against: list[PartCount],
+    ) -> StoredScan | None:
+        """Keeps a new set as the scan's `ideas` and its theme as `lastTheme`, in one transaction.
+
+        If a correction changed the inventory while the ideas were being written, they were
+        checked against pieces that are gone: the set isn't kept, as if the correction came
+        just after it. `lastTheme` is set either way. None if the scan is gone.
+        """
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._db.execute(
+                    "SELECT * FROM scans WHERE id = ? AND device_id = ?", (scan_id, device_id)
+                ).fetchone()
+                if row is None:
+                    self._db.execute("ROLLBACK")
+                    return None
+                scan = _row_to_scan(row)
+                current = to_inventory(scan.detections) == checked_against
+                scan = scan.with_changes(
+                    last_theme=ideas.theme, ideas=ideas if current else scan.ideas
+                )
+                now = utc_now()
+                self._db.executemany(
+                    "INSERT INTO ideas_written VALUES (?, ?, ?, ?, ?, ?)",
+                    [
+                        (scan_id, idea.id, key, idea.theme, idea.title, now)
+                        for idea, key in zip(ideas.items, keys, strict=True)
+                    ],
+                )
+                self._db.execute(
+                    "UPDATE scans SET last_theme = ?, ideas = ? WHERE id = ?",
+                    (scan.last_theme, _ideas_json(scan.ideas), scan_id),
                 )
                 self._db.execute("COMMIT")
                 return scan
