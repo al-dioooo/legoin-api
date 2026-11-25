@@ -8,6 +8,7 @@ library.
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -117,16 +118,26 @@ class BuildLibrary:
             model=f"{url}/model.ldr?v={build.versions['model.ldr']}",
         )
 
-    def with_previews(self, ideas: IdeaSet, base_url: str) -> IdeaSet:
-        """The set with each library build's `preview`, as of now.
+    def with_previews(
+        self,
+        ideas: IdeaSet,
+        base_url: str,
+        built: Callable[[str], Preview | None] | None = None,
+    ) -> IdeaSet:
+        """The set with each idea's `preview`, as of now.
 
         Ideas are kept with their `buildId` only, so their URLs follow the base URL and the
-        files' versions. An idea whose build has left the library loses its `buildId`, since
-        the contract sends the two together.
+        files' versions. A library build's comes from here; a built preview's (`gen_…`,
+        ADR-0012) from `built`. An idea whose build is gone loses its `buildId`, since the
+        contract sends the two together.
         """
         items = []
         for idea in ideas.items:
-            preview = self.preview(idea.build_id, base_url) if idea.build_id else None
+            preview = None
+            if idea.build_id and idea.build_id.startswith("gen_"):
+                preview = built(idea.build_id) if built else None
+            elif idea.build_id:
+                preview = self.preview(idea.build_id, base_url)
             build_id = idea.build_id if preview else None
             items.append(idea.model_copy(update={"build_id": build_id, "preview": preview}))
         return ideas.model_copy(update={"items": items})

@@ -8,7 +8,8 @@ from legoin_api.accounts import FailedLogins, Passwords, token_hash
 from legoin_api.builds import BuildLibrary
 from legoin_api.errors import ApiError
 from legoin_api.photos import PhotoStore
-from legoin_api.schemas import IdeaSet
+from legoin_api.picture.previews import IdeaPreviews
+from legoin_api.schemas import IdeaSet, Preview
 from legoin_api.store import Store, StoredAccount
 
 
@@ -63,12 +64,26 @@ class PublicUrls:
         public_url = request.app.state.settings.public_url
         self.base = (public_url or str(request.base_url)).rstrip("/")
         self.builds = get_builds(request)
+        self.app_state = request.app.state
 
     def photo(self, name: str) -> str:
         return f"{self.base}/v1/photos/{name}"
 
+    def picture_file(self, name: str) -> str:
+        return f"{self.base}/v1/picture-files/{name}"
+
+    def built_preview(self, build_id: str) -> Preview | None:
+        """A built idea preview's picture and model (ADR-0012)."""
+        store = getattr(self.app_state, "picture_store", None)
+        build = store.get_idea_build(build_id) if store else None
+        if build is None:
+            return None
+        return Preview(
+            image=self.picture_file(build.preview_file), model=self.picture_file(build.model_file)
+        )
+
     def with_previews(self, ideas: IdeaSet) -> IdeaSet:
-        return self.builds.with_previews(ideas, self.base)
+        return self.builds.with_previews(ideas, self.base, self.built_preview)
 
 
 StoreDep = Annotated[Store, Depends(get_store)]
@@ -79,3 +94,11 @@ PasswordsDep = Annotated[Passwords, Depends(get_passwords)]
 FailedLoginsDep = Annotated[FailedLogins, Depends(get_failed_logins)]
 CurrentAccount = Annotated[StoredAccount, Depends(current_account)]
 """Every route that needs a session takes it."""
+
+
+def get_previews(request: Request):
+    """Previews of ideas (ADR-0012); its hooks never fail a request."""
+    return request.app.state.idea_previews
+
+
+PreviewsDep = Annotated[IdeaPreviews, Depends(get_previews)]

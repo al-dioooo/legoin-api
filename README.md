@@ -124,6 +124,11 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_PICTURE_JOB_CALLS` | `24` | Claude calls one picture job may make |
 | `LEGOIN_PICTURE_QUEUE_SIZE` | `3` | Picture jobs waiting or running. Beyond it, an upload answers `503 unavailable` with `Retry-After: 30`. |
 | `LEGOIN_PICTURE_WORKER_MEMORY_MB` | `1024` | The picture worker's resident memory; past it, the worker is killed |
+| `LEGOIN_IDEA_PREVIEWS` | `all` | Previews of the ideas Claude writes: `all` after every request for ideas, `on_open` when an idea's page is opened, or `off`. They need Claude ideas, the key, the `picture` extra and the LDraw parts library, and share picture builds' daily budget. |
+| `LEGOIN_IDEA_PREVIEW_MODEL`, `LEGOIN_IDEA_PREVIEW_EFFORT` | `claude-opus-5-5`, `medium` | The model and effort for previews |
+| `LEGOIN_IDEA_PREVIEW_DAILY_LIMIT` | `9` | Previews each account may start a day (UTC); past it, an idea's preview is `unavailable` |
+| `LEGOIN_IDEA_PREVIEW_COST_USD` | `0.25` | Dollars one preview may spend; each reserves this much of the daily budget |
+| `LEGOIN_IDEA_PREVIEW_SECONDS`, `LEGOIN_IDEA_PREVIEW_CALLS` | `120`, `10` | One preview's time and Claude calls |
 | `LDRAW_LIBRARY_PATH` | `~/ldraw`, then `/usr/share/ldraw` | The LDraw parts library, for rendering picture builds |
 | `LEGOIN_CONTAINER` | unset (`1` in the image) | Warns at start-up when a deployment setting is missing: today, `LEGOIN_PUBLIC_URL` |
 | `PORT` | `8000` | The port, in the image only |
@@ -247,6 +252,18 @@ LDRAW_LIBRARY_PATH=/path/to/ldraw uv run --extra picture pytest tests/test_pictu
 ```
 
 On the project's server, Claude Opus 5.5 at `medium` made a build of a drawn picture in a median of 48 s and $0.14, every build valid (ADR-0012's spike). The worker peaked at about 550 MB.
+
+### Idea previews
+
+Each idea Claude writes itself gets a preview built by the same engine, after the ideas are answered (ADR-0012, "Idea previews"):
+
+- **The job:** it runs in the same queue and worker, after any picture builds. It's built from the idea's own part and color pairs, up to twice its pieces (20 at most), and keeps the idea's title.
+- **`previewStatus`:** each idea carries `pending`, `on_open`, `ready` or `unavailable`, which `GET /v1/scans/{id}` and `GET /v1/scans/{id}/ideas/{ideaId}` return as it changes. With `on_open`, reading the idea starts its build.
+- **A built preview becomes the idea:** a `gen_…` `buildId` and `preview` (files in `picture-files/`), and its steps, summary, `used` and `missing`, from `cek_inventori` of the build's parts.
+- **Stale sets:** asking for ideas again, a correction that drops the ideas, or deleting the scan cancels and deletes the old previews.
+- **Never in the way:** a limit, the budget or a failure leaves the idea text-only, and nothing about previews can fail a request for ideas.
+
+The spike measured a median preview at $0.036 and 14 s with Opus 5.5, so a set of three costs about $0.12.
 
 ## Deployment
 

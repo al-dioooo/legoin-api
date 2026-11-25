@@ -22,4 +22,5 @@ def health(request: Request) -> dict[str, str]:
     answer["pictureBuilds"] = "anthropic" if jobs and jobs.enabled else "off"
     if answer["pictureBuilds"] == "anthropic":
         answer["pictureModel"] = settings.picture_model
+    answer["ideaPreviews"] = settings.idea_previews if jobs and jobs.previews_on else "off"
     return answer
