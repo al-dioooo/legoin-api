@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from legoin_api import __version__, errors
-from legoin_api.config import PipelineKind, Settings
+from legoin_api.config import IdeasGeneratorKind, PipelineKind, Settings
 from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
@@ -44,6 +44,23 @@ def load_pipeline(settings: Settings) -> Pipeline:
     return ModelPipeline(files, threads=settings.torch_threads)
 
 
+def load_idea_generator(settings: Settings) -> IdeaGenerator:
+    if settings.ideas_kind is IdeasGeneratorKind.TEMPLATES:
+        log.info("Writing ideas from the templates. Set ANTHROPIC_API_KEY to use Claude.")
+        return TemplateIdeaGenerator()
+    from legoin_api.ideas.claude import anthropic_generator
+
+    log.info(
+        "Writing ideas with %s at effort %s, the templates as fallback",
+        settings.ideas_model,
+        settings.ideas_effort,
+    )
+    # Claude gets most of the deadline; the templates answer in what's left.
+    return anthropic_generator(
+        settings.ideas_model, settings.ideas_effort, budget_s=0.8 * settings.ideas_timeout_s
+    )
+
+
 def warn_about_deployment(settings: Settings) -> None:
     if settings.container and not settings.public_url:
         # uvicorn runs without --forwarded-allow-ips, so behind a TLS proxy the request's URL
@@ -61,7 +78,7 @@ def create_app(
     idea_generator: IdeaGenerator | None = None,
 ) -> FastAPI:
     """The app. Tests pass their own `pipeline` and `idea_generator`; otherwise
-    `LEGOIN_PIPELINE` picks the pipeline, and ideas come from the templates."""
+    `LEGOIN_PIPELINE` picks the pipeline and `LEGOIN_IDEAS_GENERATOR` what writes ideas."""
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -77,12 +94,13 @@ def create_app(
             workers=settings.scan_workers,
             queue_size=settings.scan_queue_size,
         )
-        # Until an LLM provider is chosen (contract open question 1).
-        app.state.ideas = idea_generator or TemplateIdeaGenerator()
+        app.state.ideas = idea_generator or load_idea_generator(settings)
         yield
         # The worker first, so no job writes to a closed store.
         app.state.jobs.shutdown()
         app.state.store.close()
+        if close := getattr(app.state.ideas, "aclose", None):
+            await close()
 
     app = FastAPI(title="Legoin API", version=__version__, lifespan=lifespan)
     app.state.settings = settings

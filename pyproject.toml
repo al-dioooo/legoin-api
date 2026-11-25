@@ -5,6 +5,7 @@ description = "Legoin backend: runs the brick models on a photo and suggests bui
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "anthropic>=2.14.0",
     "fastapi>=0.165.0",
     "pillow>=13.0.0",
     "pydantic>=2.11",

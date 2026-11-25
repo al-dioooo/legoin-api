@@ -1,7 +1,9 @@
 """Configuration from environment variables, all prefixed `LEGOIN_`."""
 
+import os
 from enum import StrEnum
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +16,18 @@ class PipelineKind(StrEnum):
 
     STUB = "stub"
     MODELS = "models"
+
+
+class IdeasGeneratorKind(StrEnum):
+    """What writes ideas: Claude, or legoin-web's 18 templates."""
+
+    ANTHROPIC = "anthropic"
+    TEMPLATES = "templates"
+
+
+def anthropic_key_is_set() -> bool:
+    """Whether `ANTHROPIC_API_KEY` is in the environment. Its value is never read here."""
+    return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 class Settings(BaseSettings):
@@ -60,6 +74,18 @@ class Settings(BaseSettings):
     ideas_timeout_s: float = 30.0
     """A request for ideas still unanswered after this long fails with `504 timeout`."""
 
+    ideas_generator: IdeasGeneratorKind | None = None
+    """`anthropic` has Claude write ideas, `templates` picks from legoin-web's. Unset,
+    `anthropic` when `ANTHROPIC_API_KEY` is set and `templates` otherwise."""
+
+    ideas_model: str = "claude-sonnet-5-5"
+    """The Claude model that writes ideas. Sonnet 5.5 answered within the contract's 10 s for
+    ideas at `low`; `claude-opus-5-5` also works, at about 17 s (ADR-0009)."""
+
+    ideas_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    """How hard Claude thinks. Always sent, since the models' own defaults differ; `low` is the
+    fastest."""
+
     @model_validator(mode="after")
     def _one_worker_for_the_models(self) -> "Settings":
         # Every worker would share one YOLO predictor and one classifier, and Ultralytics'
@@ -67,6 +93,20 @@ class Settings(BaseSettings):
         if self.pipeline is PipelineKind.MODELS and self.scan_workers > 1:
             raise ValueError("LEGOIN_SCAN_WORKERS must be 1 with LEGOIN_PIPELINE=models")
         return self
+
+    @model_validator(mode="after")
+    def _a_key_for_claude(self) -> "Settings":
+        if self.ideas_generator is IdeasGeneratorKind.ANTHROPIC and not anthropic_key_is_set():
+            raise ValueError("LEGOIN_IDEAS_GENERATOR=anthropic needs ANTHROPIC_API_KEY")
+        return self
+
+    @property
+    def ideas_kind(self) -> IdeasGeneratorKind:
+        if self.ideas_generator:
+            return self.ideas_generator
+        if anthropic_key_is_set():
+            return IdeasGeneratorKind.ANTHROPIC
+        return IdeasGeneratorKind.TEMPLATES
 
     @property
     def models_path(self) -> Path:

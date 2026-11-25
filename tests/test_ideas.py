@@ -90,6 +90,35 @@ def test_the_tool_an_llm_calls_answers_like_cek_inventori():
     assert len(part["enum"]) == 13
 
 
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"parts": []},
+        {"parts": [{"part": "tile-1x2", "color": "white", "quantity": 0}]},
+        {"parts": [{"part": "brick-9x9", "color": "white", "quantity": 1}]},
+    ],
+)
+def test_the_tool_refuses_what_its_strict_schema_cannot(arguments):
+    # Strict tool use takes no minimum or minItems, so the tool checks them itself.
+    with pytest.raises(ValueError):
+        run_cek_inventori_tool(arguments, [])
+
+
+def test_the_tool_schema_fits_strict_tool_use():
+    def objects(schema):
+        if schema.get("type") == "object":
+            yield schema
+            for value in schema["properties"].values():
+                yield from objects(value)
+        if schema.get("type") == "array":
+            yield from objects(schema["items"])
+
+    schema = CEK_INVENTORI_TOOL["input_schema"]
+    assert all(o["additionalProperties"] is False for o in objects(schema))
+    text = str(schema)
+    assert not any(word in text for word in ("minimum", "maximum", "minItems", "minLength"))
+
+
 # The templates
 
 

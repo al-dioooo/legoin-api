@@ -13,4 +13,8 @@ def health(request: Request) -> dict[str, str]:
     answer = {"status": "ok", "version": __version__, "pipeline": settings.pipeline}
     if settings.pipeline == "models":
         answer["modelTag"] = settings.model_tag
+    # What was configured at start-up; a request Claude can't answer still gets templates.
+    answer["ideas"] = settings.ideas_kind
+    if settings.ideas_kind == "anthropic":
+        answer["ideasModel"] = settings.ideas_model
     return answer

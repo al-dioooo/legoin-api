@@ -10,7 +10,8 @@ from legoin_api.main import create_app
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
-    return Settings(pipeline="stub", data_dir=tmp_path / "data")
+    # Templates, even when ANTHROPIC_API_KEY is set: only the live test calls the API.
+    return Settings(pipeline="stub", data_dir=tmp_path / "data", ideas_generator="templates")
 
 
 @pytest.fixture

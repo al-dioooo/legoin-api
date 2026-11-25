@@ -73,25 +73,34 @@ CEK_INVENTORI_TOOL = {
         "properties": {
             "parts": {
                 "type": "array",
-                "minItems": 1,
                 "items": {
                     "type": "object",
                     "required": ["part", "color", "quantity"],
                     "properties": {
                         "part": {"type": "string", "enum": list(PART_IDS)},
                         "color": {"type": "string", "enum": list(COLOR_IDS)},
-                        "quantity": {"type": "integer", "minimum": 1},
+                        "quantity": {"type": "integer", "description": "1 or more"},
                     },
+                    "additionalProperties": False,
                 },
             }
         },
+        "additionalProperties": False,
     },
 }
-"""The tool an LLM agent calls, in the JSON Schema shape tool-calling APIs take."""
+"""The tool an LLM agent calls, in the JSON Schema shape tool-calling APIs take.
+
+It fits strict tool use, which takes no numeric or array-length limits: a quantity under 1
+or an empty list is refused by `run_cek_inventori_tool` instead."""
 
 
 def run_cek_inventori_tool(arguments: dict, inventory: list[PartCount]) -> dict:
-    """Answers the agent's tool call. The service still checks the final list itself."""
+    """Answers the agent's tool call. The service still checks the final list itself.
+
+    Raises `ValueError` (pydantic's `ValidationError` included) for an empty list or a line
+    that isn't a catalogue part and color with a quantity of 1 or more."""
+    if not arguments.get("parts"):
+        raise ValueError("parts is empty")
     required = [PartCount.model_validate(line) for line in arguments["parts"]]
     used, missing = cek_inventori(required, inventory)
     return {"used": [line.wire() for line in used], "missing": [line.wire() for line in missing]}

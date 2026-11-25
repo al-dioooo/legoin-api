@@ -54,4 +54,4 @@ Keep the README sections current: overview, tech stack, setup and run, checks, e
 
 ## Secrets
 
-Never commit `.env*` files except `.env.example`, API keys, tokens, credentials or logs. The service needs no keys today. When an LLM provider is chosen, read its key from an environment variable, list it in the README and `.env.example` with an empty value, and never log it.
+Never commit `.env*` files except `.env.example`, API keys, tokens, credentials or logs. The only key is `ANTHROPIC_API_KEY`, for ideas from Claude (ADR-0009). The code reads it from the environment only, through the SDK, and never logs it. `.env.example` lists it empty. Locally, pass it with `uv run --env-file <file outside the repo>`, and to a container with `docker run --env-file`. It's never in the image or in GitHub secrets: CI has no key, so tests use a fake client and the one live test is skipped.
