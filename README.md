@@ -102,7 +102,8 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_MODEL_DIR` | `<LEGOIN_DATA_DIR>/models` (`/opt/legoin/models` in the image) | Where model files are cached |
 | `LEGOIN_TORCH_THREADS` | torch's default, one per core | Threads torch may use |
 | `LEGOIN_CORS_ORIGINS` | `http://localhost:3000,https://legoin-web.vercel.app` | Comma-separated origins allowed to call the API. No wildcard, so add each preview origin. |
-| `LEGOIN_PUBLIC_URL` | the URL each request came in on | The absolute base for `photo.src`, e.g. `https://api.example.com`, for a host behind a proxy |
+| `LEGOIN_PUBLIC_URL` | the URL each request came in on | The absolute base for `photo.src` and preview URLs, e.g. `https://api.example.com`, for a host behind a proxy |
+| `LEGOIN_BUILDS_DIR` | `./builds` (`/app/builds` in the image) | The library of checked builds: `manifest.json`, and each build's `preview.webp` and `model.ldr`. Without it, ideas get no previews. |
 | `LEGOIN_SCAN_TIMEOUT_S` | `30` | A scan job still running this long after its upload fails with `timeout` |
 | `LEGOIN_SCAN_WORKERS` | `1` | Scans run at the same time; torch already uses every core. Must be `1` with the `models` pipeline, whose models aren't thread-safe. |
 | `LEGOIN_SCAN_QUEUE_SIZE` | `8` | Scans accepted and not yet finished, running ones included. Beyond it, an upload answers `503 unavailable` with `Retry-After: 5`. Each holds its decoded photo, at most 48 MiB. |
@@ -134,7 +135,11 @@ Every route needs a `Legoin-Device-Id` header, the contract's placeholder for ac
 | `POST /v1/scans/{scanId}/ideas` | Three ideas for `theme` in `locale` (`en` or `id`), avoiding `exclude` |
 | `GET /v1/scans/{scanId}/ideas/{ideaId}` | One idea from the scan's latest set, with the set |
 | `GET /v1/photos/{name}` | A scan's photo, for a plain `<img>`, with no header needed |
+| `GET /v1/builds/{buildId}/preview.webp` | A library build's picture, with no header needed, cached for a year: its URL carries the file's version |
+| `GET /v1/builds/{buildId}/model.ldr` | A library build's LDraw model, as a download, cached the same way |
 | `GET /health` | `{"status": "ok", "version", "pipeline", "modelTag"?, "ideas", "ideasModel"?}`, for a host's health check |
+
+Ideas that are a library build carry its `buildId` and `preview` (ADR-0010): every template idea does. A set is kept with each idea's `buildId` only; `preview` is worked out on the way out, from `LEGOIN_PUBLIC_URL` and the files' versions.
 
 `tests/contract/` holds the contract's own example bodies, and the tests check the API against them.
 
@@ -167,7 +172,7 @@ Anything built on these models credits the datasets listed in [legoin-ml's READM
 - `model.ldr`: the build as an LDraw file;
 - `preview.webp`: an isometric picture, 640 px square, on a transparent background.
 
-`builds/manifest.json` lists every build with its parts, counted from the build itself, and each file's SHA-256. Each template has a build with the same id, text and parts. They're made offline: the service never runs BrickLayer, and neither it nor CI needs the LDraw parts library.
+`builds/manifest.json` lists every build with its parts, counted from the build itself, and each file's SHA-256. Each template has a build with the same id, text and parts. They're made offline: the service never runs BrickLayer, and neither it nor CI needs the LDraw parts library. It only serves the previews and models, and the image ships them with the manifest.
 
 `scripts/builds.py` writes them. It's a [uv script](https://docs.astral.sh/uv/guides/scripts/) with its own dependencies, `bricklayer-sdk` 0.1.0 and `brickwright` 0.1.0, locked in `scripts/builds.py.lock`; they're never installed with the service. For each build it:
 
