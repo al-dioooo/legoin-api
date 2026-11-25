@@ -13,6 +13,19 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[project.optional-dependencies]
+# The real pipeline, pinned to the versions in legoin-ml v0.2.0's release notes. Tests and CI
+# don't install it: they run the stub (`LEGOIN_PIPELINE=stub`).
+models = [
+    "ultralytics==8.4.190",
+    "torch==2.15.0",
+    "torchvision==0.29.2",
+    "scikit-learn==1.9.1",
+    "scikit-image==0.26.0",
+    # Ultralytics asks for opencv-python, which needs libGL; the headless build doesn't.
+    "opencv-python-headless",
+]
+
 [dependency-groups]
 dev = [
     "httpx2>=2.16.2",
@@ -26,6 +39,18 @@ build-backend = "uv_build"
 
 [tool.uv]
 required-version = ">=0.13.6"
+# Swapped for opencv-python-headless (see `models`): same cv2 module, no GUI libraries.
+override-dependencies = ["opencv-python; sys_platform == 'never'"]
+
+# CPU-only torch wheels, a fraction of the CUDA builds' size. macOS wheels on PyPI are CPU-only.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
 
 [tool.ruff]
 line-length = 100
