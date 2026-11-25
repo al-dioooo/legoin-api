@@ -1,0 +1,24 @@
+{
+  "id": "pjob_Q3v8tL2x",
+  "status": "done",
+  "build": {
+    "id": "pic_8KfD2mQx1Zr",
+    "createdAt": "2026-11-25T08:41:05.000Z",
+    "locale": "en",
+    "title": "Little Red Car",
+    "summary": "A red car with four black wheels, a sloped cabin with blue side windows, yellow headlights at the front and orange taillights at the back.",
+    "steps": [
+      "Stand four black round 1×1 bricks as wheels at the corners, 2 studs in from each end.",
+      "Lay five black 2×4 plates on top to make a chassis 10 studs long and 4 studs wide."
+    ],
+    "parts": [
+      { "part": "brick-2x4", "color": "red", "quantity": 9 },
+      { "part": "plate-2x4", "color": "black", "quantity": 5 }
+    ],
+    "picture": { "src": "https://api.legoin.example/v1/picture-files/n4Qk0vXb7cT2mZr9LwYe1A.jpg", "width": 900, "height": 600 },
+    "preview": {
+      "image": "https://api.legoin.example/v1/picture-files/Hq7bW3pZ0sKd5yRf2LmNcQ.webp",
+      "model": "https://api.legoin.example/v1/picture-files/Vt8cX1nB6qLs4wJe9KdRaQ.ldr"
+    }
+  }
+}

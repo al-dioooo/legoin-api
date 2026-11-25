@@ -14,12 +14,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from legoin_api import __version__, errors
 from legoin_api.accounts import FailedLogins, Passwords
 from legoin_api.builds import BuildLibrary
-from legoin_api.config import IdeasGeneratorKind, PipelineKind, Settings
+from legoin_api.config import IdeasGeneratorKind, PictureBuildsKind, PipelineKind, Settings
 from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
+from legoin_api.picture import availability
+from legoin_api.picture.files import PictureFiles
+from legoin_api.picture.jobs import Limits, PictureJobs, Runner
+from legoin_api.picture.runner import ProcessRunner
+from legoin_api.picture.store import PictureStore
 from legoin_api.pipeline import Pipeline
-from legoin_api.routes import auth, builds, health, ideas, photos, scan_jobs, scans
+from legoin_api.routes import auth, builds, health, ideas, photos, picture_builds, scan_jobs, scans
 from legoin_api.store import Store
 
 log = logging.getLogger("legoin_api")
@@ -68,6 +73,40 @@ def load_idea_generator(settings: Settings, builds: BuildLibrary) -> IdeaGenerat
     )
 
 
+def load_picture_runner(settings: Settings) -> Runner | None:
+    """The worker process runner, or None when picture builds can't run here (ADR-0012)."""
+    missing = availability.missing(settings)
+    if missing:
+        if settings.picture_builds is PictureBuildsKind.ANTHROPIC:
+            log.warning("Picture builds are off: %s.", "; ".join(missing))
+        return None
+    log.info(
+        "Picture builds on, with %s at effort %s: $%.2f a day, %d a day per account, $%.2f a job",
+        settings.picture_model,
+        settings.picture_effort,
+        settings.picture_daily_budget_usd,
+        settings.picture_daily_limit,
+        settings.picture_job_cost_usd,
+    )
+    return ProcessRunner(
+        deadline_s=picture_limits(settings).deadline_s,
+        memory_mb=settings.picture_worker_memory_mb,
+    )
+
+
+def picture_limits(settings: Settings) -> Limits:
+    return Limits(
+        model=settings.picture_model,
+        effort=settings.picture_effort,
+        daily_budget=settings.picture_daily_budget_usd,
+        daily_limit=settings.picture_daily_limit,
+        job_cost=settings.picture_job_cost_usd,
+        job_seconds=settings.picture_job_seconds,
+        job_calls=settings.picture_job_calls,
+        queue_size=settings.picture_queue_size,
+    )
+
+
 def warn_about_deployment(settings: Settings) -> None:
     if settings.container and not settings.public_url:
         # uvicorn runs without --forwarded-allow-ips, so behind a TLS proxy the request's URL
@@ -84,10 +123,12 @@ def create_app(
     pipeline: Pipeline | None = None,
     idea_generator: IdeaGenerator | None = None,
     password_hasher: PasswordHasher | None = None,
+    picture_runner: Runner | None = None,
 ) -> FastAPI:
-    """The app. Tests pass their own `pipeline`, `idea_generator` and a cheap
-    `password_hasher`; otherwise `LEGOIN_PIPELINE` picks the pipeline,
-    `LEGOIN_IDEAS_GENERATOR` what writes ideas, and passwords get Argon2id's defaults."""
+    """The app. Tests pass their own `pipeline`, `idea_generator`, a cheap `password_hasher`
+    and a `picture_runner`; otherwise `LEGOIN_PIPELINE` picks the pipeline,
+    `LEGOIN_IDEAS_GENERATOR` what writes ideas, passwords get Argon2id's defaults, and picture
+    builds run in a worker process when `LEGOIN_PICTURE_BUILDS` and the rest allow."""
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -104,9 +145,21 @@ def create_app(
             queue_size=settings.scan_queue_size,
         )
         app.state.ideas = idea_generator or load_idea_generator(settings, app.state.builds)
+        # Built builds stay readable when picture builds are off; only new jobs need a runner.
+        app.state.picture_store = PictureStore(settings.data_dir / "picture.db")
+        app.state.picture_files = PictureFiles(settings.data_dir / "picture-files")
+        app.state.picture_jobs = PictureJobs(
+            app.state.picture_store,
+            app.state.picture_files,
+            settings.data_dir / "picture-jobs",
+            picture_limits(settings),
+            picture_runner or load_picture_runner(settings),
+        )
         yield
-        # The worker first, so no job writes to a closed store.
+        # The workers first, so no job writes to a closed store.
         app.state.jobs.shutdown()
+        app.state.picture_jobs.shutdown()
+        app.state.picture_store.close()
         app.state.store.close()
         if close := getattr(app.state.ideas, "aclose", None):
             await close()
@@ -135,4 +188,5 @@ def create_app(
     app.include_router(ideas.router)
     app.include_router(photos.router)
     app.include_router(builds.router)
+    app.include_router(picture_builds.router)
     return app

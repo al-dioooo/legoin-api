@@ -11,6 +11,7 @@ def test_health_reports_the_pipeline(client):
         "version": __version__,
         "pipeline": "stub",
         "ideas": "templates",
+        "pictureBuilds": "off",
     }
 
 

@@ -19,5 +19,9 @@ The example bodies from legoin-docs [`api/contract.md`](https://github.com/al-di
 | `ideas-response.json` | `POST /scans/{scanId}/ideas`, the answer |
 | `stored-idea.json` | `GET /scans/{scanId}/ideas/{ideaId}`* |
 | `error-invalid-request.json` | Section 7, the error body |
+| `picture-quota.json` | `GET /picture-quota`, the answer (section 13, Proposed in legoin-docs#26) |
+| `picture-job-accepted.json` | `POST /picture-jobs`, the `202` answer |
+| `picture-job-done.json` | `GET /picture-jobs/{jobId}`, a finished job with its build* |
+| `picture-job-failed.json` | `GET /picture-jobs/{jobId}`, a failed job |
 
-\* The contract shortens these two with comments (`jsonc`). The copies fill them in as the comments say: `scans-list.json` with "the three detections above" from the finished job, and `stored-idea.json` with the first idea and the whole set from the ideas answer.
+\* The contract shortens these with comments (`jsonc`). The copies fill them in as the comments say: `scans-list.json` with "the three detections above" from the finished job, and `stored-idea.json` with the first idea and the whole set from the ideas answer. `picture-job-done.json` keeps the steps and parts the example shows and drops the comments.
