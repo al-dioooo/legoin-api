@@ -64,6 +64,7 @@ def create_app(
             app.state.photos,
             timeout_s=settings.scan_timeout_s,
             workers=settings.scan_workers,
+            queue_size=settings.scan_queue_size,
         )
         # Until an LLM provider is chosen (contract open question 1).
         app.state.ideas = idea_generator or TemplateIdeaGenerator()

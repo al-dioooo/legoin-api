@@ -89,6 +89,7 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_PUBLIC_URL` | the URL each request came in on | The absolute base for `photo.src`, e.g. `https://api.example.com`, for a host behind a proxy |
 | `LEGOIN_SCAN_TIMEOUT_S` | `30` | A scan job still running this long after its upload fails with `timeout` |
 | `LEGOIN_SCAN_WORKERS` | `1` | Scans run at the same time; torch already uses every core |
+| `LEGOIN_SCAN_QUEUE_SIZE` | `8` | Scans accepted and not yet finished, running ones included. Beyond it, an upload answers `503 unavailable` with `Retry-After: 5`. Each holds its decoded photo, at most 48 MiB. |
 | `LEGOIN_IDEAS_TIMEOUT_S` | `30` | A request for ideas still unanswered after this long fails with `504 timeout` |
 | `PORT` | `8000` | The port, in the image only |
 
@@ -102,7 +103,7 @@ Every route needs a `Legoin-Device-Id` header, the contract's placeholder for ac
 
 | Endpoint | What it does |
 | --- | --- |
-| `POST /v1/scan-jobs` | Uploads one photo (`multipart/form-data`, part `photo`, JPEG, PNG or WebP, up to 10 MB) and answers `202` with a running job |
+| `POST /v1/scan-jobs` | Uploads one photo (`multipart/form-data`, part `photo`, JPEG, PNG or WebP, up to 10 MB and 4096 × 4096 pixels) and answers `202` with a running job, or `503 unavailable` when the queue is full |
 | `GET /v1/scan-jobs/{jobId}` | The job: `running` with its stage (`detecting`, `classifying`, `coloring`), `done` with its scan, or `failed` with its error. Poll it every 500 ms. |
 | `DELETE /v1/scan-jobs/{jobId}` | Cancels the job; nothing is saved |
 | `GET /v1/scans` | This device's scans, newest first |

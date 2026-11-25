@@ -12,6 +12,8 @@ service runs as one process (ADR-0008). The rules:
 - The photo is written only when the scan is saved, so a failed or cancelled job leaves
   nothing behind.
 - Ended jobs are forgotten after `keep_s`.
+- At most `queue_size` jobs wait or run at once, each holding its decoded photo. An upload
+  takes its place before the photo is decoded, so the memory they hold stays bounded.
 """
 
 import logging
@@ -52,6 +54,10 @@ class Job:
     cancelled: bool = False
 
 
+class QueueFull(Exception):
+    """Every place in the queue is taken: the API answers `503 unavailable`."""
+
+
 class _Stop(Exception):
     """The job was cancelled or ran out of time; stop without saving."""
 
@@ -82,6 +88,7 @@ class JobManager:
         timeout_s: float = 30.0,
         keep_s: float = KEEP_ENDED_JOBS_S,
         workers: int = 1,
+        queue_size: int = 8,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.pipeline = pipeline
@@ -89,7 +96,9 @@ class JobManager:
         self.photos = photos
         self.timeout_s = timeout_s
         self.keep_s = keep_s
+        self.queue_size = queue_size
         self.clock = clock
+        self._queued = 0
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="scan")
@@ -97,13 +106,39 @@ class JobManager:
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def submit(self, device_id: str, image: Image.Image) -> Job:
+    def reserve(self) -> None:
+        """Takes a place in the queue for a photo about to be read, or raises `QueueFull`.
+
+        `submit(..., reserved=True)` hands the place to its job, which gives it back when it
+        ends. If no job comes of it, `release` gives it back.
+        """
+        with self._lock:
+            if self._queued >= self.queue_size:
+                raise QueueFull
+            self._queued += 1
+
+    def release(self) -> None:
+        with self._lock:
+            self._queued -= 1
+
+    def submit(self, device_id: str, image: Image.Image, *, reserved: bool = False) -> Job:
+        """Queues a job. Without `reserved`, it takes its own place or raises `QueueFull`;
+        with it, a place taken by `reserve`, which stays the caller's if this raises."""
+        if not reserved:
+            self.reserve()
         job = Job(new_id("job"), device_id, self.clock() + self.timeout_s, image)
         with self._lock:
             self._forget_ended()
             self._jobs[job.id] = job
             view = replace(job, image=None)
-        self._executor.submit(self._run, job)
+        try:
+            self._executor.submit(self._run, job)
+        except BaseException:
+            with self._lock:
+                self._jobs.pop(job.id, None)
+            if not reserved:
+                self.release()
+            raise
         return view
 
     def get(self, device_id: str, job_id: str) -> Job | None:
@@ -150,6 +185,7 @@ class JobManager:
             self._end(job, error=ErrorDetail(code="internal", message="The scan failed."))
         finally:
             job.image = None
+            self.release()
 
     def _stage(self, job: Job, stage: ScanStage, step: Callable):
         with self._lock:

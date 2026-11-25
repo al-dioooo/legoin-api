@@ -3,6 +3,7 @@
 from enum import StrEnum
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CORS_ORIGINS = "http://localhost:3000,https://legoin-web.vercel.app"
@@ -44,8 +45,12 @@ class Settings(BaseSettings):
     scan_timeout_s: float = 30.0
     """A scan job still running this long after its upload fails with `timeout`."""
 
-    scan_workers: int = 1
+    scan_workers: int = Field(1, ge=1)
     """Scans run at the same time. One by default: torch already uses every core."""
+
+    scan_queue_size: int = Field(8, ge=1)
+    """Scans accepted and not yet finished, running ones included. Beyond it, an upload answers
+    `503 unavailable` with `Retry-After`. Each holds its decoded photo, at most 48 MiB."""
 
     ideas_timeout_s: float = 30.0
     """A request for ideas still unanswered after this long fails with `504 timeout`."""

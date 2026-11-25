@@ -326,3 +326,36 @@ def test_a_crashing_pipeline_fails_the_job_as_internal(settings):
 
     assert job["status"] == "failed"
     assert job["error"]["code"] == "internal"
+
+
+def test_a_full_queue_answers_503_with_retry_after(settings):
+    pipeline = GatedPipeline()
+    small = settings.model_copy(update={"scan_queue_size": 2})
+    with TestClient(create_app(small, pipeline=pipeline)) as client:
+        running = upload(client, encode(pieces())).json()["id"]
+        assert pipeline.entered["detect"].wait(5)
+        waiting = upload(client, encode(pieces())).json()["id"]
+
+        refused = upload(client, encode(pieces()))
+
+        assert refused.status_code == 503
+        assert refused.json()["error"]["code"] == "unavailable"
+        assert refused.headers["retry-after"] == "5"
+
+        pipeline.open_all()
+        assert poll(client, running)["status"] == "done"
+        assert poll(client, waiting)["status"] == "done"
+        drain(client)
+        assert upload(client, encode(pieces())).status_code == 202
+
+
+def test_a_photo_that_is_refused_gives_its_place_back(settings):
+    pipeline = GatedPipeline()
+    single = settings.model_copy(update={"scan_queue_size": 1})
+    with TestClient(create_app(single, pipeline=pipeline)) as client:
+        assert upload(client, b"not an image").status_code == 415
+        assert upload(client, huge_png(5000, 5000)).status_code == 413
+
+        assert upload(client, encode(pieces())).status_code == 202
+        assert upload(client, encode(pieces())).status_code == 503
+        pipeline.open_all()

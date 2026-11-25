@@ -8,11 +8,14 @@ from starlette.datastructures import UploadFile
 
 from legoin_api.deps import DeviceId, PhotoUrlsDep, StoreDep
 from legoin_api.errors import ApiError
-from legoin_api.jobs import JobManager
+from legoin_api.jobs import JobManager, QueueFull
 from legoin_api.photos import MAX_PHOTO_BYTES, read_photo
 from legoin_api.schemas import DoneJob, FailedJob, RunningJob, ScanJob
 
 router = APIRouter(prefix="/v1", tags=["scan jobs"])
+
+RETRY_AFTER_S = 5
+"""When a full queue is worth trying again: a scan takes about half a second on the models."""
 
 # Room for the multipart boundaries and headers around a photo at the limit.
 MAX_BODY_BYTES = MAX_PHOTO_BYTES + 64 * 1024
@@ -65,9 +68,23 @@ async def _read_upload(request: Request) -> bytes:
 
 @router.post("/scan-jobs", status_code=202, openapi_extra=UPLOAD_SCHEMA)
 async def create_scan_job(request: Request, device: DeviceId, jobs: JobsDep) -> RunningJob:
-    # Decoding takes a while for a large photo, so it runs off the event loop.
-    image = await run_in_threadpool(read_photo, await _read_upload(request))
-    job = jobs.submit(device, image)
+    data = await _read_upload(request)
+    # A place in the queue first, so no more photos are decoded or held than it allows.
+    try:
+        jobs.reserve()
+    except QueueFull as error:
+        raise ApiError(
+            "unavailable",
+            "Too many scans are waiting. Try again in a few seconds.",
+            headers={"Retry-After": str(RETRY_AFTER_S)},
+        ) from error
+    try:
+        # Decoding takes a while for a large photo, so it runs off the event loop.
+        image = await run_in_threadpool(read_photo, data)
+        job = jobs.submit(device, image, reserved=True)
+    except BaseException:
+        jobs.release()
+        raise
     return RunningJob(id=job.id, stage=job.stage)
 
 
