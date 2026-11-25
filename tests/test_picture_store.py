@@ -4,30 +4,7 @@ from legoin_api.config import Settings
 from legoin_api.picture import availability
 from legoin_api.picture.files import PictureFiles
 from legoin_api.picture.grid import Piece
-from legoin_api.picture.store import PictureStore, Spend, StoredPictureBuild
-from legoin_api.schemas import PartCount
-
-
-def build(build_id="pic_1", account="acc_a", created_at="2026-11-25T08:00:00.000Z"):
-    return StoredPictureBuild(
-        id=build_id,
-        account_id=account,
-        created_at=created_at,
-        locale="id",
-        title="Rumah kecil",
-        summary="Rumah putih beratap merah.",
-        steps=["Satu.", "Dua."],
-        parts=[PartCount(part="brick-2x4", color="white", quantity=2)],
-        pieces=[Piece("p1", "brick-2x4", "white", 0, 0, 0, 0)],
-        picture_file="a" * 22 + ".jpg",
-        picture_width=900,
-        picture_height=600,
-        preview_file="b" * 22 + ".webp",
-        model_file="c" * 22 + ".ldr",
-        plain=False,
-        model="claude-opus-5-5",
-        cost=0.14,
-    )
+from legoin_api.picture.store import PictureStore, Spend
 
 
 @pytest.fixture
@@ -35,22 +12,6 @@ def store(tmp_path):
     store = PictureStore(tmp_path / "picture.db")
     yield store
     store.close()
-
-
-def test_builds_belong_to_their_account(store):
-    store.insert_build(build("pic_old", created_at="2026-11-24T08:00:00.000Z"))
-    store.insert_build(build("pic_new"))
-    store.insert_build(build("pic_other", account="acc_b"))
-
-    assert [b.id for b in store.list_builds("acc_a")] == ["pic_new", "pic_old"]
-    assert store.get_build("acc_a", "pic_other") is None
-    assert store.get_build("acc_a", "pic_new") == build("pic_new")
-    assert store.delete_build("acc_b", "pic_new") is None
-    assert store.delete_build("acc_a", "pic_new").files == [
-        "a" * 22 + ".jpg",
-        "b" * 22 + ".webp",
-        "c" * 22 + ".ldr",
-    ]
 
 
 def test_spending_and_jobs_are_counted_by_day_and_kept(store, tmp_path):
@@ -92,22 +53,23 @@ def test_file_names_are_random_and_only_the_stores_own_are_served(tmp_path):
 def test_the_defaults_are_the_adrs():
     settings = Settings()
 
-    assert settings.picture_builds == "off"
-    assert (settings.picture_model, settings.picture_effort) == ("claude-opus-5-5", "medium")
-    assert settings.picture_daily_budget_usd == 3.0
-    assert settings.picture_daily_limit == 2
-    assert settings.picture_job_cost_usd == 0.5
-    assert settings.picture_job_seconds == 300
-    assert settings.picture_worker_memory_mb == 1024
+    assert settings.scan_builds == "off"
+    assert (settings.scan_build_model, settings.scan_build_effort) == ("claude-opus-5-5", "medium")
+    assert settings.scan_build_daily_budget_usd == 3.0
+    assert settings.scan_build_daily_sets == 3
+    assert settings.scan_build_cost_usd == 0.35
+    assert (settings.scan_build_seconds, settings.scan_build_calls) == (150, 12)
+    assert settings.scan_build_stagger_s == 5.0
+    assert settings.scan_build_worker_memory_mb == 1024
 
 
-def test_picture_builds_are_off_until_everything_is_there(monkeypatch, tmp_path):
-    assert availability.missing(Settings()) == ["LEGOIN_PICTURE_BUILDS is off"]
+def test_builds_are_off_until_everything_is_there(monkeypatch, tmp_path):
+    assert availability.missing(Settings()) == ["LEGOIN_SCAN_BUILDS is off"]
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("LDRAW_LIBRARY_PATH", str(tmp_path))
     monkeypatch.setattr(availability.importlib.util, "find_spec", lambda name: None)
-    missing = availability.missing(Settings(picture_builds="anthropic"))
+    missing = availability.missing(Settings(scan_builds="anthropic"))
 
     assert missing[0] == "ANTHROPIC_API_KEY is unset"
     assert missing[1].startswith("the picture extra isn't installed (bricklayer, ")
@@ -118,30 +80,70 @@ def test_picture_builds_are_off_until_everything_is_there(monkeypatch, tmp_path)
     assert availability.ldraw_library() == tmp_path
 
 
-def test_a_version_1_file_gets_job_kinds_and_idea_builds(tmp_path):
+VERSION_2 = """
+CREATE TABLE picture_builds (
+    id TEXT PRIMARY KEY, account_id TEXT NOT NULL, created_at TEXT NOT NULL,
+    locale TEXT NOT NULL, title TEXT NOT NULL, summary TEXT NOT NULL, steps TEXT NOT NULL,
+    parts TEXT NOT NULL, pieces TEXT NOT NULL, picture_file TEXT NOT NULL,
+    picture_width INTEGER NOT NULL, picture_height INTEGER NOT NULL,
+    preview_file TEXT NOT NULL, model_file TEXT NOT NULL, plain INTEGER NOT NULL,
+    model TEXT NOT NULL, cost REAL NOT NULL
+);
+CREATE TABLE picture_jobs (
+    id TEXT PRIMARY KEY, account_id TEXT NOT NULL, day TEXT NOT NULL, created_at TEXT NOT NULL,
+    status TEXT NOT NULL, code TEXT, counted INTEGER NOT NULL, cost REAL NOT NULL DEFAULT 0,
+    kind TEXT NOT NULL DEFAULT 'picture'
+);
+CREATE TABLE picture_spend (
+    job_id TEXT NOT NULL, day TEXT NOT NULL, at TEXT NOT NULL, model TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL, cache_write_tokens INTEGER NOT NULL,
+    cost REAL NOT NULL, estimated INTEGER NOT NULL
+);
+"""
+"""ADR-0012's tables, as a version 1 file had them, less the job's `kind`."""
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_an_older_file_drops_the_picture_builds_and_their_files(tmp_path, version):
     import sqlite3
 
     from legoin_api.picture import store as module
 
     path = tmp_path / "picture.db"
     old = sqlite3.connect(path)
-    v1 = module.SCHEMA.replace("    kind TEXT NOT NULL DEFAULT 'picture'\n", "")
-    v1 = v1.replace("    cost REAL NOT NULL DEFAULT 0,\n);", "    cost REAL NOT NULL DEFAULT 0\n);")
-    v1 = v1.replace(module.IDEA_BUILDS, "").replace("user_version = 2", "user_version = 1")
-    old.executescript(v1)
+    schema = VERSION_2 + (module.IDEA_BUILDS if version == 2 else "")
+    if version == 1:
+        schema = schema.replace(",\n    kind TEXT NOT NULL DEFAULT 'picture'", "")
+    old.executescript(schema + f"PRAGMA user_version = {version};")
+    old.execute(
+        "INSERT INTO picture_builds VALUES ('pic_1', 'acc_a', 't', 'en', 'T', 'S', '[]', '[]',"
+        " '[]', 'p.jpg', 900, 600, 'p.webp', 'p.ldr', 0, 'm', 0.1)"
+    )
     old.execute(
         "INSERT INTO picture_jobs (id, account_id, day, created_at, status, counted)"
         " VALUES ('pjob_old', 'acc_a', '2026-11-25', 't', 'done', 1)"
     )
+    old.execute(
+        "INSERT INTO picture_spend VALUES ('pjob_old', '2026-11-25', 't', 'm', 0, 0, 0, 0, 0.4, 0)"
+    )
     old.commit()
     old.close()
+    deleted: list[str] = []
 
-    store = PictureStore(path)
+    store = PictureStore(path, delete_files=deleted.extend)
 
-    assert store.jobs_counted("acc_a", "2026-11-25") == 1
-    assert store.jobs_counted("acc_a", "2026-11-25", "idea") == 0
-    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert deleted == ["p.jpg", "p.webp", "p.ldr"]
+    tables = {row[0] for row in store._db.execute("SELECT name FROM sqlite_master")}
+    assert "picture_builds" not in tables and "idea_builds" in tables
+    # The day's spending still counts toward the budget; old picture jobs aren't sets.
+    assert store.spent("2026-11-25") == pytest.approx(0.4)
+    assert store.jobs_counted("acc_a", "2026-11-25") == 0
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 3
     store.close()
+    # Once is enough.
+    PictureStore(path, delete_files=deleted.extend).close()
+    assert len(deleted) == 3
 
 
 def idea_build(build_id, idea_id, scan_id="scn_1", account="acc_a"):
@@ -171,6 +173,7 @@ def test_idea_builds_are_kept_by_scan_and_deleted_but_those_kept(store):
     assert store.get_idea_build("gen_1") is None
     assert store.get_idea_build("gen_4") is not None
     assert store.delete_idea_build("gen_4").idea_id == "idea_a"
+    store.insert_job("bjob_1", "acc_a", "2026-11-25", "t")
     store.insert_job("pjob_i", "acc_a", "2026-11-25", "t", kind="idea")
+    assert store.jobs_counted("acc_a", "2026-11-25") == 1
     assert store.jobs_counted("acc_a", "2026-11-25", "idea") == 1
-    assert store.jobs_counted("acc_a", "2026-11-25") == 0

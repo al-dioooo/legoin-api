@@ -1,31 +1,31 @@
-"""Picture builds, picture jobs and what they spent, in SQLite (ADR-0012).
+"""Build jobs, what they spent, and the builds of ideas, in SQLite (ADR-0013).
 
 Their own file, `<data dir>/picture.db`, apart from the scans' database: the feature is
 optional, and its tables don't change the scans' schema. One connection behind a lock, as in
 `store.py`. Only the API process writes it; the worker process reports to it on its stdout.
 
-- `picture_builds`: each saved build, by account.
-- `picture_jobs`: each accepted job, by account and UTC day, and whether it counts toward the
-  account's daily limit.
+- `picture_jobs`: each accepted job, by account and UTC day, its `kind`, and whether it counts
+  toward the account's daily limit. A set of builds from a scan is one job of kind `scan`.
 - `picture_spend`: every Claude call a job made, with its tokens and cost, by UTC day. The daily
   budget is their sum, so it survives restarts and deploys.
-- `idea_builds`: the previews built for ideas, by account and scan, with their files.
+- `idea_builds`: the builds Claude made of ideas, by account and scan, with their files.
 
-Version 2 added previews of ideas: a job's `kind` (`picture` or `idea`, so each has its own
-daily count) and `idea_builds`. Both changes only add, so a version 1 file is migrated in place
-on start.
+Version 2 (ADR-0012) added previews of ideas: a job's `kind` and `idea_builds`. Version 3
+(ADR-0013) drops `picture_builds`, the standalone picture builds, and their files: their page
+and routes are gone, so their owners couldn't see or delete them any more. A version 1 or 2
+file is migrated in place on start.
 """
 
 import json
 import sqlite3
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from legoin_api.picture.grid import Piece
-from legoin_api.schemas import PartCount
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 IDEA_BUILDS = """
 CREATE TABLE IF NOT EXISTS idea_builds (
@@ -45,33 +45,19 @@ MIGRATE_FROM_1 = f"""
 BEGIN;
 ALTER TABLE picture_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'picture';
 {IDEA_BUILDS}
+PRAGMA user_version = 2;
+COMMIT;
+"""
+
+MIGRATE_FROM_2 = f"""
+BEGIN;
+DROP TABLE IF EXISTS picture_builds;
 PRAGMA user_version = {SCHEMA_VERSION};
 COMMIT;
 """
 
 SCHEMA = f"""
 BEGIN;
-CREATE TABLE IF NOT EXISTS picture_builds (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    locale TEXT NOT NULL,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    steps TEXT NOT NULL,
-    parts TEXT NOT NULL,
-    pieces TEXT NOT NULL,
-    picture_file TEXT NOT NULL,
-    picture_width INTEGER NOT NULL,
-    picture_height INTEGER NOT NULL,
-    preview_file TEXT NOT NULL,
-    model_file TEXT NOT NULL,
-    plain INTEGER NOT NULL,
-    model TEXT NOT NULL,
-    cost REAL NOT NULL
-);
-CREATE INDEX IF NOT EXISTS picture_builds_by_account ON picture_builds (account_id, created_at);
-
 CREATE TABLE IF NOT EXISTS picture_jobs (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -81,7 +67,7 @@ CREATE TABLE IF NOT EXISTS picture_jobs (
     code TEXT,
     counted INTEGER NOT NULL,
     cost REAL NOT NULL DEFAULT 0,
-    kind TEXT NOT NULL DEFAULT 'picture'
+    kind TEXT NOT NULL DEFAULT 'scan'
 );
 CREATE INDEX IF NOT EXISTS picture_jobs_by_day ON picture_jobs (day, account_id);
 
@@ -105,31 +91,6 @@ COMMIT;
 
 
 @dataclass(frozen=True)
-class StoredPictureBuild:
-    id: str
-    account_id: str
-    created_at: str
-    locale: str
-    title: str
-    summary: str
-    steps: list[str]
-    parts: list[PartCount]
-    pieces: list[Piece]
-    picture_file: str
-    picture_width: int
-    picture_height: int
-    preview_file: str
-    model_file: str
-    plain: bool
-    model: str
-    cost: float
-
-    @property
-    def files(self) -> list[str]:
-        return [self.picture_file, self.preview_file, self.model_file]
-
-
-@dataclass(frozen=True)
 class Spend:
     """One Claude call: its tokens and dollars. `estimated` when the worker was stopped
     during the call, so its worst case is counted instead."""
@@ -143,30 +104,10 @@ class Spend:
     estimated: bool = False
 
 
-def _row_to_build(row: sqlite3.Row) -> StoredPictureBuild:
-    return StoredPictureBuild(
-        id=row["id"],
-        account_id=row["account_id"],
-        created_at=row["created_at"],
-        locale=row["locale"],
-        title=row["title"],
-        summary=row["summary"],
-        steps=json.loads(row["steps"]),
-        parts=[PartCount.model_validate(line) for line in json.loads(row["parts"])],
-        pieces=[Piece(**piece) for piece in json.loads(row["pieces"])],
-        picture_file=row["picture_file"],
-        picture_width=row["picture_width"],
-        picture_height=row["picture_height"],
-        preview_file=row["preview_file"],
-        model_file=row["model_file"],
-        plain=bool(row["plain"]),
-        model=row["model"],
-        cost=row["cost"],
-    )
-
-
 class PictureStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, delete_files: Callable[[list[str]], None] = lambda names: None):
+        """`delete_files` deletes the files of the standalone picture builds that a version 1
+        or 2 file still has, before their rows go."""
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
@@ -175,71 +116,24 @@ class PictureStore:
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
             self._db.executescript(SCHEMA)
-        elif version == 1:
+            return
+        if version == 1:
             self._db.executescript(MIGRATE_FROM_1)
+        if version <= 2:
+            rows = self._db.execute(
+                "SELECT picture_file, preview_file, model_file FROM picture_builds"
+            ).fetchall()
+            delete_files([name for row in rows for name in row])
+            self._db.executescript(MIGRATE_FROM_2)
 
     def close(self) -> None:
         with self._lock:
             self._db.close()
 
-    # Builds
-
-    def insert_build(self, build: StoredPictureBuild) -> None:
-        with self._lock:
-            self._db.execute(
-                f"INSERT INTO picture_builds VALUES ({', '.join('?' * 17)})",
-                (
-                    build.id,
-                    build.account_id,
-                    build.created_at,
-                    build.locale,
-                    build.title,
-                    build.summary,
-                    json.dumps(build.steps, ensure_ascii=False),
-                    json.dumps([line.wire() for line in build.parts]),
-                    json.dumps([piece.wire() for piece in build.pieces]),
-                    build.picture_file,
-                    build.picture_width,
-                    build.picture_height,
-                    build.preview_file,
-                    build.model_file,
-                    int(build.plain),
-                    build.model,
-                    build.cost,
-                ),
-            )
-
-    def get_build(self, account_id: str, build_id: str) -> StoredPictureBuild | None:
-        with self._lock:
-            row = self._db.execute(
-                "SELECT * FROM picture_builds WHERE id = ? AND account_id = ?",
-                (build_id, account_id),
-            ).fetchone()
-        return _row_to_build(row) if row else None
-
-    def list_builds(self, account_id: str) -> list[StoredPictureBuild]:
-        """This account's builds, newest first."""
-        with self._lock:
-            rows = self._db.execute(
-                "SELECT * FROM picture_builds WHERE account_id = ?"
-                " ORDER BY created_at DESC, id DESC",
-                (account_id,),
-            ).fetchall()
-        return [_row_to_build(row) for row in rows]
-
-    def delete_build(self, account_id: str, build_id: str) -> StoredPictureBuild | None:
-        """Deletes one build and gives it back, so its files can go too."""
-        with self._lock:
-            row = self._db.execute(
-                "DELETE FROM picture_builds WHERE id = ? AND account_id = ? RETURNING *",
-                (build_id, account_id),
-            ).fetchone()
-        return _row_to_build(row) if row else None
-
     # Jobs and spending
 
     def insert_job(
-        self, job_id: str, account_id: str, day: str, created_at: str, kind: str = "picture"
+        self, job_id: str, account_id: str, day: str, created_at: str, kind: str = "scan"
     ) -> None:
         """A job that's been accepted: it counts toward the account's limit from now."""
         with self._lock:
@@ -256,7 +150,7 @@ class PictureStore:
                 (status, code, int(counted), job_id),
             )
 
-    def jobs_counted(self, account_id: str, day: str, kind: str = "picture") -> int:
+    def jobs_counted(self, account_id: str, day: str, kind: str = "scan") -> int:
         """The account's jobs of this kind that count toward its limit on this UTC day."""
         with self._lock:
             row = self._db.execute(
@@ -294,14 +188,14 @@ class PictureStore:
                 raise
 
     def spent(self, day: str) -> float:
-        """Dollars every picture job spent on this UTC day."""
+        """Dollars every job spent on this UTC day."""
         with self._lock:
             row = self._db.execute(
                 "SELECT COALESCE(SUM(cost), 0) FROM picture_spend WHERE day = ?", (day,)
             ).fetchone()
         return float(row[0])
 
-    # Previews of ideas
+    # Builds of ideas
 
     def insert_idea_build(self, build: "StoredIdeaBuild") -> None:
         with self._lock:
@@ -320,7 +214,7 @@ class PictureStore:
             )
 
     def get_idea_build(self, build_id: str) -> "StoredIdeaBuild | None":
-        """A preview by its id, which is random: the idea that names it is the account's."""
+        """A build by its id, which is random: the idea that names it is the account's."""
         with self._lock:
             row = self._db.execute("SELECT * FROM idea_builds WHERE id = ?", (build_id,)).fetchone()
         return _row_to_idea_build(row) if row else None
@@ -335,8 +229,8 @@ class PictureStore:
     def delete_idea_builds(
         self, account_id: str, scan_id: str, keep: frozenset[str] = frozenset()
     ) -> list["StoredIdeaBuild"]:
-        """Deletes a scan's previews, except those of the ideas in `keep`, and gives them back
-        so their files can go too."""
+        """Deletes a scan's builds, except those of the ideas in `keep`, and gives them back so
+        their files can go too."""
         with self._lock:
             rows = self._db.execute(
                 "DELETE FROM idea_builds WHERE account_id = ? AND scan_id = ? RETURNING *",
@@ -352,7 +246,7 @@ class PictureStore:
 
 @dataclass(frozen=True)
 class StoredIdeaBuild:
-    """An idea's preview: its picture and model, and the pieces it was built from."""
+    """The build Claude made of an idea: its picture and model, and its pieces."""
 
     id: str
     account_id: str
