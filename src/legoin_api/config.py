@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     cors_origins: str = DEFAULT_CORS_ORIGINS
     """Comma-separated origins allowed to call the API from a browser."""
 
+    public_url: str | None = None
+    """The absolute base for `photo.src`, e.g. `https://api.example.com`. Unset, each answer
+    uses the URL its request came in on."""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

@@ -30,3 +30,34 @@ def example():
         return json.loads((CONTRACT_DIR / f"{name}.json").read_text())
 
     return load
+
+
+DEVICE = "3b0e6f1c-5d2a-4f7e-9c41-8a2d7e5b9f10"
+"""The device id in the contract's examples."""
+
+
+@pytest.fixture
+def seed(client):
+    """Puts a scan straight into the store, with a small photo file, and returns it."""
+    from legoin_api.schemas import Detection, IdeaSet
+    from legoin_api.store import StoredScan
+
+    def put(scan: dict, device: str = DEVICE, **extra) -> StoredScan:
+        photos = client.app.state.photos
+        name = photos.new_name()
+        (photos.directory / name).write_bytes(b"\xff\xd8\xff\xd9")
+        stored = StoredScan(
+            id=scan["id"],
+            device_id=device,
+            created_at=scan["createdAt"],
+            photo_file=name,
+            photo_width=scan["photo"]["width"],
+            photo_height=scan["photo"]["height"],
+            detections=[Detection.model_validate(d) for d in scan["detections"]],
+            last_theme=extra.get("last_theme", scan.get("lastTheme")),
+            ideas=IdeaSet.model_validate(extra["ideas"]) if extra.get("ideas") else None,
+        )
+        client.app.state.store.insert_scan(stored)
+        return stored
+
+    return put
