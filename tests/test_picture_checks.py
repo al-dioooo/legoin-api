@@ -1,11 +1,16 @@
-"""BrickLayer's checks and the LDraw export, for real. They need the `picture` extra, which CI
-doesn't install:
+"""BrickLayer's checks, the LDraw export and the renderer, for real. They need the `picture`
+extra, which CI doesn't install, and rendering needs the LDraw parts library too:
 
-    uv run --extra picture pytest tests/test_picture_checks.py
+    LDRAW_LIBRARY_PATH=~/ldraw uv run --extra picture pytest tests/test_picture_checks.py
 """
+
+import io
+import os
+from pathlib import Path
 
 import pytest
 from picture_fakes import CAR
+from PIL import Image
 
 from legoin_api.picture.grid import Build
 
@@ -46,3 +51,22 @@ def test_the_ldr_carries_the_credit_and_one_line_per_piece():
     assert lines[0] == "0 Race car"
     assert "0 // Parts: the LDraw parts library, CC BY 4.0, https://library.ldraw.org" in lines
     assert sum(line.startswith("1 ") for line in lines) == len(CAR)
+
+
+def ldraw_library() -> Path | None:
+    path = Path(os.environ.get("LDRAW_LIBRARY_PATH") or Path.home() / "ldraw").expanduser()
+    return path if (path / "parts" / "3001.dat").is_file() else None
+
+
+@pytest.mark.skipif(ldraw_library() is None, reason="needs the LDraw parts library")
+def test_the_renderer_draws_a_preview_and_labelled_views():
+    from legoin_api.picture.render import PREVIEW_SIZE, TILE, Renderer
+
+    renderer = Renderer()
+    preview = Image.open(io.BytesIO(renderer.preview(car(), "Race car")))
+    views = Image.open(io.BytesIO(renderer.views(car(), ["front", "right", "top"])))
+
+    assert (preview.format, preview.size, preview.mode) == ("WEBP", (PREVIEW_SIZE,) * 2, "RGBA")
+    assert preview.getpixel((0, 0))[3] == 0  # transparent around the build
+    assert views.format == "PNG"
+    assert views.size == (2 * TILE + 6, 2 * TILE + 6)
