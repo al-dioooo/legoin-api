@@ -18,8 +18,13 @@ Needs the `models` extra.
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
+
+# Before Ultralytics loads: no usage analytics, update checks or downloads from a backend that
+# handles people's photos. The models come from the pinned release, never from Ultralytics.
+os.environ.setdefault("YOLO_OFFLINE", "1")
 
 import numpy as np
 import torch

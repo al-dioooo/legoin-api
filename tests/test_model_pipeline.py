@@ -9,15 +9,16 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("torch")
 pytest.importorskip("skimage")
-plotting = pytest.importorskip("ultralytics.utils.plotting")
 
+# The pipeline first: it sets YOLO_OFFLINE before anything imports Ultralytics.
+from legoin_api.pipeline.models import letterbox, widen  # noqa: E402, I001
 import torch  # noqa: E402
 from images import pieces  # noqa: E402
 from PIL import Image  # noqa: E402
+from ultralytics.utils import plotting  # noqa: E402
 
 from legoin_api.pipeline import Found  # noqa: E402
 from legoin_api.pipeline.color import ColorParameters, putuskan, warna_kepingan  # noqa: E402
-from legoin_api.pipeline.models import letterbox, widen  # noqa: E402
 
 COLOR_JSON = json.loads((Path(__file__).parent / "fixtures/legoin_warna-v0.2.0.json").read_text())
 """`legoin_warna.json` from legoin-ml v0.2.0, as released."""
@@ -68,3 +69,11 @@ def test_the_color_port_names_catalogue_colors(rgb, expected):
 def test_color_parameters_must_use_the_catalogue():
     with pytest.raises(ValueError):
         ColorParameters.from_json(COLOR_JSON | {"colors": ["red", "purple"]})
+
+
+def test_ultralytics_runs_offline():
+    from ultralytics.utils import ONLINE
+    from ultralytics.utils.events import events
+
+    assert not ONLINE
+    assert not events.enabled
