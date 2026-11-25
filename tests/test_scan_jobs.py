@@ -4,11 +4,11 @@ import time
 import pytest
 from conftest import DEVICE
 from fastapi.testclient import TestClient
-from images import empty_table, encode, flat, pieces, soft_gradient
-from PIL import Image
+from images import empty_table, encode, flat, huge_png, pieces, soft_gradient
+from PIL import Image, ImageFile
 
 from legoin_api.main import create_app
-from legoin_api.photos import MAX_PHOTO_BYTES
+from legoin_api.photos import MAX_PHOTO_BYTES, MAX_PHOTO_PIXELS
 from legoin_api.pipeline import Found, Reading
 
 HEADERS = {"Legoin-Device-Id": DEVICE}
@@ -146,6 +146,32 @@ def test_a_much_larger_body_is_refused_before_it_is_read(client):
     response = upload(client, b"\xff" * (MAX_PHOTO_BYTES + 200_000))
 
     assert response.status_code == 413
+
+
+def test_a_tiny_png_with_huge_dimensions_is_refused_without_decoding(client, monkeypatch):
+    # The review's case: a 191 KB PNG of 7745 × 7745 px stalled the server for 0.8 s and took
+    # 458 MiB. It's refused from its header, before a single pixel is decoded.
+    decoded = []
+    load = ImageFile.ImageFile.load
+    monkeypatch.setattr(ImageFile.ImageFile, "load", lambda im: decoded.append(im) or load(im))
+    data = huge_png(7745, 7745)
+    assert len(data) < 200_000
+
+    started = time.perf_counter()
+    response = upload(client, data)
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "photo_too_large"
+    assert not decoded
+    assert time.perf_counter() - started < 0.5
+    assert client.app.state.jobs._executor._work_queue.empty()
+
+
+def test_photos_are_capped_near_the_web_apps_size(client):
+    assert MAX_PHOTO_PIXELS == 4096 * 4096
+    # A 12 MP phone photo fits; one pixel row more than the cap doesn't.
+    assert MAX_PHOTO_PIXELS >= 4032 * 3024
+    assert upload(client, huge_png(4096, 4097)).status_code == 413
 
 
 def test_an_unknown_job_is_not_found_and_cancelling_it_is_fine(client):

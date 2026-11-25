@@ -19,8 +19,10 @@ PHOTO_NAME = re.compile(r"^[A-Za-z0-9_-]{22}\.jpg$")
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 """The contract's limit, legoin-web's `MAX_PHOTO_BYTES`."""
 
-MAX_PHOTO_PIXELS = 60_000_000
-"""Refuses decompression bombs: a small file that decodes to a huge image."""
+MAX_PHOTO_PIXELS = 4096 * 4096
+"""Refuses decompression bombs, a small file that decodes to a huge image, from its header
+alone. The web app uploads at most 1200 px; this leaves room for a 12 MP phone photo, and
+caps a decoded photo at 48 MiB."""
 
 # Pillow names some phone JPEGs, which hold a second, smaller image, "MPO".
 FORMATS = {"JPEG", "MPO", "PNG", "WEBP"}
