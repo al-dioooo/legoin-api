@@ -84,3 +84,24 @@ def apply_changes(
             else:
                 result.append(restored)
     return result
+
+
+def cek_inventori(
+    required: Iterable[PartCount], inventory: Iterable[PartCount]
+) -> tuple[list[PartCount], list[PartCount]]:
+    """The PRD's `cek_inventori`: splits what a build needs into `used` and `missing`.
+
+    A port of legoin-web's `checkInventory`. For each line, `used` gets what the inventory
+    covers, up to what's needed, and `missing` gets the rest, so a part the person doesn't
+    have is never counted as owned. `used` plus `missing` is exactly what the build needs.
+    """
+    available = {(line.part, line.color): line.quantity for line in merge(inventory)}
+    used: list[PartCount] = []
+    missing: list[PartCount] = []
+    for line in merge(required):
+        owned = min(line.quantity, available.get((line.part, line.color), 0))
+        if owned > 0:
+            used.append(line.model_copy(update={"quantity": owned}))
+        if line.quantity > owned:
+            missing.append(line.model_copy(update={"quantity": line.quantity - owned}))
+    return used, missing
