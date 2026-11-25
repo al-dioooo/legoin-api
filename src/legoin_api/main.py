@@ -7,17 +7,19 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from argon2 import PasswordHasher
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from legoin_api import __version__, errors
+from legoin_api.accounts import FailedLogins, Passwords
 from legoin_api.builds import BuildLibrary
 from legoin_api.config import IdeasGeneratorKind, PipelineKind, Settings
 from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
 from legoin_api.pipeline import Pipeline
-from legoin_api.routes import builds, health, ideas, photos, scan_jobs, scans
+from legoin_api.routes import auth, builds, health, ideas, photos, scan_jobs, scans
 from legoin_api.store import Store
 
 log = logging.getLogger("legoin_api")
@@ -81,9 +83,11 @@ def create_app(
     *,
     pipeline: Pipeline | None = None,
     idea_generator: IdeaGenerator | None = None,
+    password_hasher: PasswordHasher | None = None,
 ) -> FastAPI:
-    """The app. Tests pass their own `pipeline` and `idea_generator`; otherwise
-    `LEGOIN_PIPELINE` picks the pipeline and `LEGOIN_IDEAS_GENERATOR` what writes ideas."""
+    """The app. Tests pass their own `pipeline`, `idea_generator` and a cheap
+    `password_hasher`; otherwise `LEGOIN_PIPELINE` picks the pipeline,
+    `LEGOIN_IDEAS_GENERATOR` what writes ideas, and passwords get Argon2id's defaults."""
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -110,6 +114,8 @@ def create_app(
     app = FastAPI(title="Legoin API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.builds = BuildLibrary(settings.builds_dir)
+    app.state.passwords = Passwords(password_hasher)
+    app.state.failed_logins = FailedLogins()
 
     # Before CORS, so the CORS middleware wraps every answer, errors included.
     errors.install(app)
@@ -122,6 +128,7 @@ def create_app(
     )
 
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(scan_jobs.router)
     app.include_router(scans.router)
     app.include_router(ideas.router)
