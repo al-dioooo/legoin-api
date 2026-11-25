@@ -35,3 +35,12 @@ def test_cors_origins_come_from_the_environment(monkeypatch):
     monkeypatch.setenv("LEGOIN_CORS_ORIGINS", "http://localhost:3100, https://preview.example ")
 
     assert Settings().cors_origin_list == ["http://localhost:3100", "https://preview.example"]
+
+
+def test_empty_variables_mean_the_default(monkeypatch):
+    for name in ("LEGOIN_TORCH_THREADS", "LEGOIN_MODEL_DIR", "LEGOIN_PUBLIC_URL"):
+        monkeypatch.setenv(name, "")
+
+    settings = Settings()
+
+    assert (settings.torch_threads, settings.model_dir, settings.public_url) == (None, None, None)
