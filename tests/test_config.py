@@ -82,12 +82,13 @@ def test_the_model_and_effort_default_to_sonnet_5_5_at_low(monkeypatch):
 
 
 def test_the_claude_generator_fits_inside_the_deadline(monkeypatch):
+    from legoin_api.builds import BuildLibrary
     from legoin_api.ideas.claude import AnthropicIdeaGenerator
     from legoin_api.main import load_idea_generator
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
 
-    generator = load_idea_generator(Settings(ideas_effort="medium"))
+    generator = load_idea_generator(Settings(ideas_effort="medium"), BuildLibrary.empty())
 
     assert isinstance(generator, AnthropicIdeaGenerator)
     assert (generator.model, generator.effort, generator.budget_s) == (

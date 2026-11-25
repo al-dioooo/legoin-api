@@ -10,6 +10,7 @@ import os
 
 import pytest
 
+from legoin_api.builds import BuildLibrary
 from legoin_api.catalogue import COLOR_IDS, PART_IDS
 from legoin_api.config import Settings
 from legoin_api.ideas.claude import anthropic_generator
@@ -31,7 +32,10 @@ INVENTORY = [
 
 def test_claude_writes_three_indonesian_animals_from_the_catalogue(caplog):
     settings = Settings()
-    generator = anthropic_generator(settings.ideas_model, settings.ideas_effort, budget_s=24)
+    library = BuildLibrary(settings.builds_dir)
+    generator = anthropic_generator(
+        settings.ideas_model, settings.ideas_effort, budget_s=24, library=library
+    )
     request = IdeaRequest(
         themes=["animals"] * 3, locale="id", inventory=INVENTORY, excluded=[], shown=[]
     )

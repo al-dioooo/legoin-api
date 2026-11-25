@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from legoin_api.ideas.generator import ProposedIdea
 from legoin_api.schemas import Difficulty, IdeaSet, IdeaTheme, Locale, PartCount, Preview
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,24 @@ class LibraryBuild:
     """Every part the build needs, counted from the build itself."""
     versions: dict[str, str]
     """Each served file's name and the start of its SHA-256, which versions its URL."""
+
+    @property
+    def key(self) -> str:
+        """The generator key of the template with this id, so "Try other ideas" knows a
+        library build Claude picked as the same idea as that template."""
+        return f"template:{self.id}"
+
+    def propose(self, locale: Locale) -> ProposedIdea:
+        return ProposedIdea(
+            key=self.key,
+            theme=self.theme,
+            difficulty=self.difficulty,
+            title=self.title[locale],
+            summary=self.summary[locale],
+            steps=list(self.steps[locale]),
+            requires=list(self.parts),
+            build_id=self.id,
+        )
 
     @classmethod
     def from_manifest(cls, entry: dict) -> "LibraryBuild":
@@ -53,6 +72,13 @@ class LibraryBuild:
 class BuildLibrary:
     """The builds in a directory written by `scripts/builds.py`; empty if it has none."""
 
+    @classmethod
+    def empty(cls) -> "BuildLibrary":
+        library = cls.__new__(cls)
+        library.directory = Path()
+        library.builds = {}
+        return library
+
     def __init__(self, directory: Path):
         self.directory = directory
         manifest = directory / "manifest.json"
@@ -65,6 +91,10 @@ class BuildLibrary:
 
     def __len__(self) -> int:
         return len(self.builds)
+
+    def __iter__(self):
+        """The builds by id, an order that only changes when the library does."""
+        return iter(sorted(self.builds.values(), key=lambda build: build.id))
 
     def get(self, build_id: str) -> LibraryBuild | None:
         return self.builds.get(build_id)
