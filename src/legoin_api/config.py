@@ -25,6 +25,16 @@ class IdeasGeneratorKind(StrEnum):
     TEMPLATES = "templates"
 
 
+class PictureBuildsKind(StrEnum):
+    """Whether picture builds (ADR-0012) run, and with whom."""
+
+    OFF = "off"
+    ANTHROPIC = "anthropic"
+
+
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
 def anthropic_key_is_set() -> bool:
     """Whether `ANTHROPIC_API_KEY` is in the environment. Its value is never read here."""
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
@@ -86,9 +96,40 @@ class Settings(BaseSettings):
     """The Claude model that writes ideas. Sonnet 5.5 answered within the contract's 10 s for
     ideas at `low`; `claude-opus-5-5` also works, at about 17 s (ADR-0009)."""
 
-    ideas_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    ideas_effort: Effort = "low"
     """How hard Claude thinks. Always sent, since the models' own defaults differ; `low` is the
     fastest."""
+
+    picture_builds: PictureBuildsKind = PictureBuildsKind.OFF
+    """Picture builds run only when this is `anthropic`, `ANTHROPIC_API_KEY` is set, the
+    `picture` extra is installed and the LDraw parts library is found (ADR-0012)."""
+
+    picture_model: str = "claude-opus-5-5"
+    """The Claude model that designs picture builds. Opus 5.5 made the more faithful builds in
+    the spike, at about $0.14 each; `claude-sonnet-5-5` costs about $0.05."""
+
+    picture_effort: Effort = "medium"
+
+    picture_daily_budget_usd: float = Field(3.0, ge=0)
+    """Dollars a day (UTC) for every picture job together, counted from real usage."""
+
+    picture_daily_limit: int = Field(2, ge=0)
+    """Picture jobs each account may start a day (UTC)."""
+
+    picture_job_cost_usd: float = Field(0.50, gt=0)
+    """Dollars one picture job may spend. Each job reserves this much of the daily budget."""
+
+    picture_job_seconds: float = Field(300.0, gt=0)
+    """Seconds one picture job may design for. The worker is killed a minute after that."""
+
+    picture_job_calls: int = Field(24, ge=1)
+    """Claude API calls one picture job may make."""
+
+    picture_queue_size: int = Field(3, ge=1)
+    """Picture jobs waiting or running. Beyond it, an upload answers `503 unavailable`."""
+
+    picture_worker_memory_mb: int = Field(1024, ge=256)
+    """The picture worker's resident memory; past it, the worker is killed."""
 
     @model_validator(mode="after")
     def _one_worker_for_the_models(self) -> "Settings":
