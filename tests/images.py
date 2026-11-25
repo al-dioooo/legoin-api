@@ -34,3 +34,10 @@ def empty_table(size: tuple[int, int] = (400, 300)) -> Image.Image:
         [(v, v, v) for v in (120 + rng.randint(-10, 10) for _ in range(size[0] * size[1]))]
     )
     return image
+
+
+def soft_gradient(size: tuple[int, int] = (400, 300)) -> Image.Image:
+    """Shapes without detail, like a photo out of focus: a smooth gray ramp."""
+    width, height = size
+    ramp = bytes(100 + 70 * x // (width - 1) for x in range(width))
+    return Image.frombytes("L", size, ramp * height).convert("RGB")

@@ -1,0 +1,94 @@
+{
+  "method": "k-means in CIELAB on the crop; brick = clusters with centre weight > border share; colour = 75th percentile L*, median a*, median b* of brick pixels; nearest reference by CIEDE2000",
+  "colors": [
+    "red",
+    "blue",
+    "yellow",
+    "green",
+    "black",
+    "white",
+    "light-gray",
+    "dark-gray",
+    "orange",
+    "brown"
+  ],
+  "rebrickable_ids": {
+    "red": 4,
+    "blue": 1,
+    "yellow": 14,
+    "green": 2,
+    "black": 0,
+    "white": 15,
+    "light-gray": 71,
+    "dark-gray": 72,
+    "orange": 25,
+    "brown": 70
+  },
+  "reference_lab": {
+    "red": [
+      43.033,
+      63.794,
+      53.71
+    ],
+    "blue": [
+      38.299,
+      21.223,
+      -61.285
+    ],
+    "yellow": [
+      83.347,
+      -1.357,
+      73.766
+    ],
+    "green": [
+      44.477,
+      -38.29,
+      23.044
+    ],
+    "black": [
+      5.299,
+      -1.658,
+      -8.371
+    ],
+    "white": [
+      100.0,
+      -0.002,
+      0.005
+    ],
+    "light-gray": [
+      67.463,
+      -0.99,
+      -2.68
+    ],
+    "dark-gray": [
+      46.096,
+      -1.981,
+      3.078
+    ],
+    "orange": [
+      68.982,
+      37.677,
+      71.211
+    ],
+    "brown": [
+      22.913,
+      19.145,
+      24.664
+    ]
+  },
+  "reference_source": "rebrickable",
+  "temperature": 6.5707,
+  "max_delta_e": 29.379,
+  "confidence": "softmax(-deltaE / temperature) over the 10 colours; at most 0.5 when the smallest deltaE > max_delta_e, or when the brick chroma >= neutral_chroma but the chosen reference chroma < neutral_chroma",
+  "neutral_chroma": 15,
+  "low_confidence": 0.6,
+  "kmeans_k": 4,
+  "kmeans_n_init": 2,
+  "kmeans_random_state": 0,
+  "analysis_size": 96,
+  "lightness_percentile": 75,
+  "border_fraction": 0.08,
+  "centre_sigma": 0.3,
+  "scikit_learn": "1.9.1",
+  "scikit_image": "0.26.0"
+}

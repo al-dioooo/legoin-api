@@ -20,6 +20,12 @@ from legoin_api.routes import health, ideas, photos, scan_jobs, scans
 from legoin_api.store import Store
 
 log = logging.getLogger("legoin_api")
+if not log.handlers:
+    # Uvicorn only sets up its own loggers; this shows the service's, stage timings included.
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    log.addHandler(_handler)
+    log.setLevel(logging.INFO)
 
 
 def load_pipeline(settings: Settings) -> Pipeline:
@@ -30,7 +36,12 @@ def load_pipeline(settings: Settings) -> Pipeline:
         from legoin_api.pipeline.stub import StubPipeline
 
         return StubPipeline()
-    raise RuntimeError("LEGOIN_PIPELINE=models isn't available yet.")
+    # Imported here, so the stub and the tests never need torch.
+    from legoin_api.pipeline.models import ModelPipeline
+    from legoin_api.weights import ensure_models
+
+    files = ensure_models(settings.model_tag, settings.models_path)
+    return ModelPipeline(files, threads=settings.torch_threads)
 
 
 def create_app(

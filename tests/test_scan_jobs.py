@@ -4,7 +4,7 @@ import time
 import pytest
 from conftest import DEVICE
 from fastapi.testclient import TestClient
-from images import empty_table, encode, flat, pieces
+from images import empty_table, encode, flat, pieces, soft_gradient
 from PIL import Image
 
 from legoin_api.main import create_app
@@ -85,8 +85,9 @@ def test_the_photo_is_stored_upright_and_without_exif(client):
     ("image", "code"),
     [
         (flat((10, 10, 12)), "too_dark"),
-        (flat((128, 128, 128)), "too_blurry"),
+        (soft_gradient(), "too_blurry"),
         (empty_table(), "no_pieces"),
+        (flat((236, 233, 226)), "no_pieces"),
     ],
 )
 def test_a_photo_with_no_pieces_ends_the_job_with_its_problem(client, image, code):
