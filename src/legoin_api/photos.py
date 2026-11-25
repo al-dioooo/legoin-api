@@ -14,7 +14,7 @@ from PIL import Image, ImageOps
 
 from legoin_api.errors import ApiError
 
-PHOTO_NAME = re.compile(r"^[A-Za-z0-9_-]{22}\.jpg$")
+PHOTO_NAME = re.compile(r"[A-Za-z0-9_-]{22}\.jpg")
 
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 """The contract's limit, legoin-web's `MAX_PHOTO_BYTES`."""
@@ -70,7 +70,7 @@ class PhotoStore:
 
     def path(self, name: str) -> Path | None:
         """The file for a name, or None for a name the store never makes."""
-        return self.directory / name if PHOTO_NAME.match(name) else None
+        return self.directory / name if PHOTO_NAME.fullmatch(name) else None
 
     def delete(self, name: str) -> None:
         path = self.path(name)
