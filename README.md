@@ -91,6 +91,7 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_SCAN_WORKERS` | `1` | Scans run at the same time; torch already uses every core. Must be `1` with the `models` pipeline, whose models aren't thread-safe. |
 | `LEGOIN_SCAN_QUEUE_SIZE` | `8` | Scans accepted and not yet finished, running ones included. Beyond it, an upload answers `503 unavailable` with `Retry-After: 5`. Each holds its decoded photo, at most 48 MiB. |
 | `LEGOIN_IDEAS_TIMEOUT_S` | `30` | A request for ideas still unanswered after this long fails with `504 timeout` |
+| `LEGOIN_CONTAINER` | unset (`1` in the image) | Warns at start-up when a deployment setting is missing: today, `LEGOIN_PUBLIC_URL` |
 | `PORT` | `8000` | The port, in the image only |
 
 The service needs no keys. When an LLM provider is chosen, its key goes here and in `.env.example`, with an empty value.
@@ -147,5 +148,5 @@ Nothing is deployed yet; the host is a team decision. Whatever runs the image ne
 - **Memory and CPU.** The container used about 425 MB idle and 550 MB after scanning, on the project's 8-core server. Plan for at least 1 GB. A 31-piece photo scanned in about 0.5 s there, so a smaller CPU still has room within the contract's 5-second budget.
 - **Image size.** About 2.0 GB unpacked, 0.6 GB to download, mostly torch.
 - **HTTPS and a body limit at the proxy.** Cap request bodies at about 11 MB; the app also refuses uploads over 10 MB itself.
-- **`LEGOIN_PUBLIC_URL`** set to the public base URL, so photo URLs use it.
+- **`LEGOIN_PUBLIC_URL`** set to the public base URL, so photo URLs use it. The image logs a warning at start-up when it's unset.
 - **`LEGOIN_CORS_ORIGINS`** set to the web app's origins.

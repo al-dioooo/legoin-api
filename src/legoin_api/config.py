@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     """The absolute base for `photo.src`, e.g. `https://api.example.com`. Unset, each answer
     uses the URL its request came in on."""
 
+    container: bool = False
+    """Set by the Docker image, where the service is deployed: it warns at start-up about
+    settings a deployment needs, such as `LEGOIN_PUBLIC_URL`."""
+
     scan_timeout_s: float = 30.0
     """A scan job still running this long after its upload fails with `timeout`."""
 
