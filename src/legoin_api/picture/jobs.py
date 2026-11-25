@@ -19,18 +19,25 @@ saved build or `failed` with a code, and never changes after that. The rules:
   and model there. Only a `done` job moves them into `PictureFiles`; every job's folder is
   deleted when it ends.
 - Ended jobs are forgotten after `keep_s`. Jobs live in memory, as scan jobs do.
+
+**Idea previews** (ADR-0012, "Idea previews") are jobs of the second kind, `idea`, in the same
+queue and worker. `submit_idea` never raises: it answers `pending`, or `unavailable` when previews
+are off, the account has used its previews for the day, the budget can't take one more, or too
+many are waiting. Picture builds run first; previews run in the order asked. A preview's result
+goes to `idea_sink`, which applies it to the idea if the idea is still in its scan's set; one
+whose set was replaced is cancelled by `cancel_ideas`.
 """
 
 import logging
-import queue
 import shutil
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from PIL import Image
 
@@ -39,7 +46,7 @@ from legoin_api.ids import new_id, utc_now
 from legoin_api.picture.files import PictureFiles, save_jpeg
 from legoin_api.picture.grid import Piece
 from legoin_api.picture.schemas import PICTURE_STAGES, PictureQuota, PictureStage
-from legoin_api.picture.store import PictureStore, Spend, StoredPictureBuild
+from legoin_api.picture.store import PictureStore, Spend, StoredIdeaBuild, StoredPictureBuild
 from legoin_api.picture.worker import MESSAGES
 from legoin_api.schemas import ErrorDetail, PartCount
 
@@ -84,6 +91,28 @@ class Limits:
         return self.job_seconds + DEADLINE_GRACE_S
 
 
+@dataclass(frozen=True)
+class PreviewLimits:
+    """What an idea's preview may take. Previews share `Limits.daily_budget`."""
+
+    model: str
+    effort: str
+    daily_limit: int
+    job_cost: float
+    job_seconds: float
+    job_calls: int
+    queue_size: int = 9
+    """Previews waiting or running; past it, a new one is `unavailable`."""
+    max_tokens: int = 4000
+
+    @property
+    def deadline_s(self) -> float:
+        return self.job_seconds + DEADLINE_GRACE_S
+
+
+Kind = Literal["picture", "idea"]
+
+
 @dataclass
 class PictureJob:
     id: str
@@ -104,6 +133,23 @@ class PictureJob:
     result: dict | None = None
     failure: tuple[str, str] | None = None
     stop: threading.Event = field(default_factory=threading.Event)
+    kind: Kind = "picture"
+    idea: dict | None = None
+    """For a preview: `scanId`, `ideaId` and the idea as written (`title`, `summary`, `steps`
+    and `parts`)."""
+
+
+class IdeaSink(Protocol):
+    """Where previews go: the ideas they were made for (`previews.IdeaPreviews`)."""
+
+    def built(self, job: PictureJob, build: StoredIdeaBuild, result: dict) -> bool:
+        """Applies a built preview to its idea. False when the idea is no longer in its scan's
+        set: the preview is then deleted."""
+        ...
+
+    def failed(self, job: PictureJob) -> None:
+        """No preview will come for this idea."""
+        ...
 
 
 class Runner(Protocol):
@@ -121,6 +167,8 @@ class PictureJobs:
         limits: Limits,
         runner: Runner | None,
         *,
+        pictures: bool = True,
+        previews: PreviewLimits | None = None,
         keep_s: float = KEEP_ENDED_JOBS_S,
         clock: Callable[[], float] = time.monotonic,
         today: Callable[[], str] = utc_day,
@@ -130,13 +178,20 @@ class PictureJobs:
         self.scratch = scratch
         self.limits = limits
         self.runner = runner
-        """None when picture builds are off: nothing is accepted."""
+        """None when neither picture builds nor previews can run here."""
+        self.pictures = pictures
+        """Whether picture builds are accepted; the runner may run previews only."""
+        self.previews = previews
+        """None when idea previews are off."""
+        self.idea_sink: IdeaSink | None = None
         self.keep_s = keep_s
         self.clock = clock
         self.today = today
         self._jobs: dict[str, PictureJob] = {}
         self._lock = threading.Lock()
-        self._queue: queue.Queue[str | None] = queue.Queue()
+        # Picture builds before previews; each in the order they came.
+        self._waiting: dict[Kind, deque[str]] = {"picture": deque(), "idea": deque()}
+        self._wake = threading.Condition(self._lock)
         self._closing = False
         # A crash or a restart leaves folders of jobs that will never end.
         shutil.rmtree(scratch, ignore_errors=True)
@@ -147,7 +202,28 @@ class PictureJobs:
 
     @property
     def enabled(self) -> bool:
-        return self.runner is not None
+        """Whether picture builds are accepted."""
+        return self.runner is not None and self.pictures
+
+    @property
+    def previews_on(self) -> bool:
+        return self.runner is not None and self.previews is not None
+
+    def _cap(self, job: PictureJob) -> float:
+        if job.kind == "idea" and self.previews:
+            return self.previews.job_cost
+        return self.limits.job_cost
+
+    def _budget_takes(self, cost: float) -> bool:
+        """Whether today's spending, what running and queued jobs may still spend, and `cost`
+        fit under the daily budget. Under the lock."""
+        reserved = sum(
+            max(0.0, self._cap(job) - job.cost)
+            for job in self._jobs.values()
+            if job.status == "running"
+        )
+        spent = self.store.spent(self.today())
+        return spent + reserved + cost <= self.limits.daily_budget + 1e-9
 
     # Admission
 
@@ -170,13 +246,7 @@ class PictureJobs:
         if used >= self.limits.daily_limit:
             return "limit"
         # Every running or queued job may still spend up to its cap.
-        reserved = sum(
-            max(0.0, self.limits.job_cost - job.cost)
-            for job in self._jobs.values()
-            if job.status == "running"
-        )
-        spent = self.store.spent(self.today())
-        if spent + reserved + self.limits.job_cost > self.limits.daily_budget + 1e-9:
+        if not self._budget_takes(self.limits.job_cost):
             return "budget"
         return None
 
@@ -198,7 +268,9 @@ class PictureJobs:
                 raise ApiError(
                     "picture_budget", "Today's budget for picture builds is spent.", headers=later
                 )
-            active = sum(job.status == "running" for job in self._jobs.values())
+            active = sum(
+                job.status == "running" and job.kind == "picture" for job in self._jobs.values()
+            )
             if active >= self.limits.queue_size:
                 raise ApiError(
                     "unavailable",
@@ -211,8 +283,65 @@ class PictureJobs:
             save_jpeg(image, job.folder / "picture.jpg")
             self.store.insert_job(job.id, account_id, self.today(), utc_now())
             self._jobs[job.id] = job
-            self._queue.put(job.id)
+            self._waiting["picture"].append(job.id)
+            self._wake.notify()
             return self._view(job)
+
+    def submit_idea(
+        self, account_id: str, scan_id: str, idea_id: str, idea: dict, locale: str
+    ) -> Literal["pending", "unavailable"]:
+        """Queues a preview of an idea. Never raises: a preview that can't be made is
+        `unavailable`, and the idea stays as text."""
+        with self._lock:
+            self._forget_ended()
+            previews = self.previews
+            if self._closing or not self.previews_on or previews is None:
+                return "unavailable"
+            used = self.store.jobs_counted(account_id, self.today(), "idea")
+            waiting = sum(
+                job.status == "running" and job.kind == "idea" for job in self._jobs.values()
+            )
+            if (
+                used >= previews.daily_limit
+                or waiting >= previews.queue_size
+                or not self._budget_takes(previews.job_cost)
+            ):
+                return "unavailable"
+            job_id = new_id("pjob")
+            job = PictureJob(job_id, account_id, locale, self.scratch / job_id, 0, 0)
+            job.kind = "idea"
+            job.idea = {"scanId": scan_id, "ideaId": idea_id, **idea}
+            (job.folder / "out").mkdir(parents=True)
+            self.store.insert_job(job.id, account_id, self.today(), utc_now(), "idea")
+            self._jobs[job.id] = job
+            self._waiting["idea"].append(job.id)
+            self._wake.notify()
+            return "pending"
+
+    def cancel_ideas(
+        self, account_id: str, scan_id: str, keep: frozenset[str] = frozenset()
+    ) -> None:
+        """Cancels the scan's previews, but those of the ideas in `keep`: their set was
+        replaced, or the scan is gone. A queued one doesn't count; a running one is stopped."""
+        with self._lock:
+            stale = [
+                job
+                for job in self._jobs.values()
+                if job.kind == "idea"
+                and job.account_id == account_id
+                and job.idea
+                and job.idea["scanId"] == scan_id
+                and job.idea["ideaId"] not in keep
+                and job.status == "running"
+            ]
+            for job in stale:
+                del self._jobs[job.id]
+                job.cancelled = True
+                job.stop.set()
+            waiting = [job for job in stale if job.stage == "queued"]
+        for job in waiting:
+            self.store.end_job(job.id, "cancelled", None, counted=False)
+            shutil.rmtree(job.folder, ignore_errors=True)
 
     # Reading and cancelling
 
@@ -255,29 +384,52 @@ class PictureJobs:
             self._closing = True
             for job in self._jobs.values():
                 job.stop.set()
-        self._queue.put(None)
+            self._wake.notify_all()
         if self._dispatcher.is_alive():
             self._dispatcher.join(timeout_s)
 
     # The dispatcher
 
-    def _dispatch(self) -> None:
-        while (job_id := self._queue.get()) is not None:
-            with self._lock:
-                job = self._jobs.get(job_id)
-                if job is None or job.cancelled or self._closing:
-                    continue
-            spec = {
-                "jobId": job.id,
-                "picture": str(job.folder / "picture.jpg"),
-                "out": str(job.folder / "out"),
-                "locale": job.locale,
-                "model": self.limits.model,
-                "effort": self.limits.effort,
-                "maxCalls": self.limits.job_calls,
-                "maxCost": self.limits.job_cost,
-                "maxSeconds": self.limits.job_seconds,
+    def _next(self) -> PictureJob | None:
+        """The next job to run, picture builds first; None once shutting down."""
+        with self._lock:
+            while not self._closing:
+                for kind in ("picture", "idea"):
+                    while self._waiting[kind]:
+                        job = self._jobs.get(self._waiting[kind].popleft())
+                        if job is not None and not job.cancelled:
+                            return job
+                self._wake.wait()
+            return None
+
+    def _spec(self, job: PictureJob) -> dict:
+        spec = {"jobId": job.id, "kind": job.kind, "out": str(job.folder / "out")}
+        spec["locale"] = job.locale
+        if job.kind == "idea" and self.previews:
+            limits = self.previews
+            return spec | {
+                "idea": job.idea,
+                "model": limits.model,
+                "effort": limits.effort,
+                "maxCalls": limits.job_calls,
+                "maxCost": limits.job_cost,
+                "maxSeconds": limits.job_seconds,
+                "maxTokens": limits.max_tokens,
+                "deadlineS": limits.deadline_s,
             }
+        return spec | {
+            "picture": str(job.folder / "picture.jpg"),
+            "model": self.limits.model,
+            "effort": self.limits.effort,
+            "maxCalls": self.limits.job_calls,
+            "maxCost": self.limits.job_cost,
+            "maxSeconds": self.limits.job_seconds,
+            "deadlineS": self.limits.deadline_s,
+        }
+
+    def _dispatch(self) -> None:
+        while (job := self._next()) is not None:
+            spec = self._spec(job)
             try:
                 self.runner.run(spec, lambda event, job=job: self._on_event(job, event), job.stop)
             except Exception:
@@ -321,7 +473,10 @@ class PictureJobs:
     def _finish(self, job: PictureJob) -> None:
         if job.in_flight > 0:
             # Stopped during a call, which may still be billed: count its worst case.
-            spend = Spend(model=self.limits.model, cost=job.in_flight, estimated=True)
+            model = (
+                self.previews.model if job.kind == "idea" and self.previews else self.limits.model
+            )
+            spend = Spend(model=model, cost=job.in_flight, estimated=True)
             self.store.record_spend(job.id, self.today(), utc_now(), spend)
             with self._lock:
                 job.cost += job.in_flight
@@ -330,10 +485,57 @@ class PictureJobs:
             self.store.end_job(job.id, "cancelled", None, counted=True)
             return
         if job.result is not None and job.failure is None:
-            self._save(job, job.result)
+            if job.kind == "idea":
+                self._save_idea(job, job.result)
+            else:
+                self._save(job, job.result)
             return
         code, message = job.failure or ("internal", "The picture worker stopped unexpectedly.")
         self._end(job, code, message)
+        if job.kind == "idea" and self.idea_sink:
+            self.idea_sink.failed(job)
+
+    def _save_idea(self, job: PictureJob, result: dict) -> None:
+        """Keeps a preview and hands it to its idea; if the idea's set was replaced meanwhile,
+        the preview goes."""
+        assert job.idea is not None
+        out = job.folder / "out"
+        build = StoredIdeaBuild(
+            id=new_id("gen"),
+            account_id=job.account_id,
+            scan_id=job.idea["scanId"],
+            idea_id=job.idea["ideaId"],
+            created_at=utc_now(),
+            preview_file=self.files.adopt(out / "preview.webp", "webp"),
+            model_file=self.files.adopt(out / "model.ldr", "ldr"),
+            pieces=[Piece(**piece) for piece in result["pieces"]],
+        )
+        self.store.insert_idea_build(build)
+        shutil.rmtree(job.folder, ignore_errors=True)
+        applied = not job.cancelled and self.idea_sink is not None
+        if applied and self.idea_sink is not None:
+            applied = self.idea_sink.built(job, build, result)
+        if not applied:
+            self.delete_idea_build(build.id)
+        with self._lock:
+            job.status, job.build_id, job.ended_at = "done", build.id, self.clock()
+        self.store.end_job(job.id, "done" if applied else "cancelled", None, counted=True)
+        log.info("Idea preview %s for %s: %s ($%.3f)", job.id, build.idea_id,
+                 "applied" if applied else "dropped", job.cost)  # fmt: skip
+
+    def delete_idea_build(self, build_id: str) -> None:
+        build = self.store.delete_idea_build(build_id)
+        if build:
+            for name in build.files:
+                self.files.delete(name)
+
+    def forget_idea_builds(
+        self, account_id: str, scan_id: str, keep: frozenset[str] = frozenset()
+    ) -> None:
+        """Deletes a scan's previews with their files, but those of the ideas in `keep`."""
+        for build in self.store.delete_idea_builds(account_id, scan_id, keep):
+            for name in build.files:
+                self.files.delete(name)
 
     def _save(self, job: PictureJob, result: dict) -> None:
         out = job.folder / "out"

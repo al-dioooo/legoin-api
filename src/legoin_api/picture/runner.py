@@ -73,7 +73,8 @@ class ProcessRunner:
         assert process.stdin is not None
         process.stdin.write(json.dumps(spec))
         process.stdin.close()
-        deadline = time.monotonic() + self.deadline_s
+        deadline_s = float(spec.get("deadlineS", self.deadline_s))
+        deadline = time.monotonic() + deadline_s
         try:
             while True:
                 try:
@@ -90,7 +91,7 @@ class ProcessRunner:
                 if stop.is_set():
                     break
                 if time.monotonic() > deadline:
-                    log.warning("Picture job %s ran past %.0f s", spec["jobId"], self.deadline_s)
+                    log.warning("Picture job %s ran past %.0f s", spec["jobId"], deadline_s)
                     emit(
                         {
                             "type": "failed",
