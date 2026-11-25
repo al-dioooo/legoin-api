@@ -78,6 +78,8 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.ruff.lint.per-file-ignores]
 # One sentence a line, as legoin-web's copy.
 "src/legoin_api/ideas/templates.py" = ["E501"]
+# The picture agent's prompt: its example table keeps one piece a row.
+"src/legoin_api/picture/prompt.py" = ["E501"]
 # Each build's steps, one sentence a line, match its template's.
 "builds/*/build.py" = ["E501"]
 
