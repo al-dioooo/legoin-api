@@ -1,4 +1,4 @@
-"""Scan jobs, run by an in-process worker and served by polling (contract section 4).
+"""Scan jobs, run by an in-process worker and served by polling (contract section 5).
 
 A job moves through `detecting`, `classifying` and `coloring`, then ends `done` with a saved
 scan or `failed` with an error, and never changes after that. Jobs live in memory, so the

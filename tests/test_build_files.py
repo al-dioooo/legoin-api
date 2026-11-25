@@ -1,4 +1,4 @@
-"""The library's files, served without a device header (ADR-0010)."""
+"""The library's files, served without a header (ADR-0010)."""
 
 import hashlib
 import json

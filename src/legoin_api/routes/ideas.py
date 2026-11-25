@@ -1,4 +1,4 @@
-"""Ideas: three builds for a scan, and one idea read back (contract section 5)."""
+"""Ideas: three builds for a scan, and one idea read back (contract section 6)."""
 
 import asyncio
 from typing import Annotated

@@ -1,4 +1,4 @@
-"""Scan jobs: upload a photo, poll its stages, cancel (contract section 4)."""
+"""Scan jobs: upload a photo, poll its stages, cancel (contract section 5)."""
 
 from typing import Annotated
 

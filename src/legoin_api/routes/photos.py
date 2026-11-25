@@ -1,4 +1,4 @@
-"""Photos, for a plain `<img>`: no device header, an unguessable name instead."""
+"""Photos, for a plain `<img>`: no `Authorization` header, an unguessable name instead."""
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse

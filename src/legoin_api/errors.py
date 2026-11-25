@@ -1,4 +1,4 @@
-"""The contract's one error body (section 6), for every error the API answers."""
+"""The contract's one error body (section 7), for every error the API answers."""
 
 import logging
 

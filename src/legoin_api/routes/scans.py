@@ -1,4 +1,4 @@
-"""Scans: history, one scan, corrections and deletion (contract section 4)."""
+"""Scans: history, one scan, corrections and deletion (contract section 5)."""
 
 from fastapi import APIRouter, Response
 
