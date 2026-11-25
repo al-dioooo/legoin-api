@@ -289,8 +289,8 @@ class AnthropicIdeaGenerator:
             ],
             messages=messages,
             tools=[CEK_INVENTORI],
-            # Forced tool use is refused on Opus 5.5, so Claude decides; the last request
-            # offers no tools, so it has to answer.
+            # Forced tool use is refused on Sonnet 5.5 and Opus 5.5, so Claude decides; the last
+            # request offers no tools, so it has to answer.
             tool_choice={"type": "auto"} if tools else {"type": "none"},
             thinking={"type": "adaptive"},
             output_config={

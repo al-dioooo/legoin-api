@@ -68,14 +68,14 @@ def test_claude_without_a_key_refuses_to_start(monkeypatch):
         Settings()
 
 
-def test_the_model_and_effort_default_to_opus_5_5_at_low(monkeypatch):
+def test_the_model_and_effort_default_to_sonnet_5_5_at_low(monkeypatch):
     settings = Settings()
-    assert (settings.ideas_model, settings.ideas_effort) == ("claude-opus-5-5", "low")
+    assert (settings.ideas_model, settings.ideas_effort) == ("claude-sonnet-5-5", "low")
 
-    monkeypatch.setenv("LEGOIN_IDEAS_MODEL", "claude-sonnet-5-5")
+    monkeypatch.setenv("LEGOIN_IDEAS_MODEL", "claude-opus-5-5")
     monkeypatch.setenv("LEGOIN_IDEAS_EFFORT", "medium")
     settings = Settings()
-    assert (settings.ideas_model, settings.ideas_effort) == ("claude-sonnet-5-5", "medium")
+    assert (settings.ideas_model, settings.ideas_effort) == ("claude-opus-5-5", "medium")
     monkeypatch.setenv("LEGOIN_IDEAS_EFFORT", "extreme")
     with pytest.raises(ValidationError):
         Settings()
@@ -91,7 +91,7 @@ def test_the_claude_generator_fits_inside_the_deadline(monkeypatch):
 
     assert isinstance(generator, AnthropicIdeaGenerator)
     assert (generator.model, generator.effort, generator.budget_s) == (
-        "claude-opus-5-5",
+        "claude-sonnet-5-5",
         "medium",
         24.0,
     )
@@ -111,4 +111,4 @@ def test_health_says_claude_writes_the_ideas(monkeypatch, tmp_path):
     with TestClient(create_app(settings, idea_generator=TemplateIdeaGenerator())) as client:
         health = client.get("/health").json()
 
-    assert (health["ideas"], health["ideasModel"]) == ("anthropic", "claude-opus-5-5")
+    assert (health["ideas"], health["ideasModel"]) == ("anthropic", "claude-sonnet-5-5")

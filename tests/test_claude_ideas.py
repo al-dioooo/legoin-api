@@ -61,7 +61,7 @@ def message(stop_reason: str, *blocks, stop_details=None) -> SimpleNamespace:
         stop_reason=stop_reason,
         stop_details=stop_details,
         content=[SimpleNamespace(type="thinking", thinking=""), *blocks],
-        model="claude-opus-5-5",
+        model="claude-sonnet-5-5",
         usage=usage(),
     )
 
@@ -112,7 +112,9 @@ class FakeClient:
 
 
 def generator(client, budget_s=5.0, effort="low") -> AnthropicIdeaGenerator:
-    return AnthropicIdeaGenerator(client, model="claude-opus-5-5", effort=effort, budget_s=budget_s)
+    return AnthropicIdeaGenerator(
+        client, model="claude-sonnet-5-5", effort=effort, budget_s=budget_s
+    )
 
 
 def request(themes=("vehicles",) * 3, locale="en", excluded=()) -> IdeaRequest:
@@ -155,7 +157,7 @@ def test_the_request_uses_the_settings_adr_0009_records():
     propose(client, effort="medium")
 
     call = client.calls[0]
-    assert call["model"] == "claude-opus-5-5"
+    assert call["model"] == "claude-sonnet-5-5"
     assert call["thinking"] == {"type": "adaptive"}
     assert call["output_config"] == {
         "effort": "medium",

@@ -109,7 +109,7 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_IDEAS_TIMEOUT_S` | `30` | A request for ideas still unanswered after this long fails with `504 timeout`. Claude gets 80% of it; the templates answer after that. |
 | `ANTHROPIC_API_KEY` | unset | The Anthropic API key. Read by the SDK from the environment only, never logged. |
 | `LEGOIN_IDEAS_GENERATOR` | `anthropic` with a key, else `templates` | What writes ideas. `anthropic` without a key refuses to start. |
-| `LEGOIN_IDEAS_MODEL` | `claude-opus-5-5` | The Claude model that writes ideas |
+| `LEGOIN_IDEAS_MODEL` | `claude-sonnet-5-5` | The Claude model that writes ideas. `claude-opus-5-5` also works, but takes about 17 s. |
 | `LEGOIN_IDEAS_EFFORT` | `low` | Claude's effort: `low`, `medium`, `high`, `xhigh` or `max` |
 | `LEGOIN_CONTAINER` | unset (`1` in the image) | Warns at start-up when a deployment setting is missing: today, `LEGOIN_PUBLIC_URL` |
 | `PORT` | `8000` | The port, in the image only |
@@ -170,4 +170,4 @@ Nothing is deployed yet; the host is a team decision. Whatever runs the image ne
 - **HTTPS and a body limit at the proxy.** Cap request bodies at about 11 MB; the app also refuses uploads over 10 MB itself.
 - **`LEGOIN_PUBLIC_URL`** set to the public base URL, so photo URLs use it. The image logs a warning at start-up when it's unset.
 - **`LEGOIN_CORS_ORIGINS`** set to the web app's origins.
-- **`ANTHROPIC_API_KEY`** from the host's secret store or `--env-file`, for ideas from Claude. At effort `low`, a request for ideas took a median of 17 s and cost about $0.05 (ADR-0009).
+- **`ANTHROPIC_API_KEY`** from the host's secret store or `--env-file`, for ideas from Claude. With Sonnet 5.5 at effort `low`, a request for ideas took a median of 9.6 s and cost about $0.02 (ADR-0009).

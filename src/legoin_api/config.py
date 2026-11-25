@@ -78,11 +78,13 @@ class Settings(BaseSettings):
     """`anthropic` has Claude write ideas, `templates` picks from legoin-web's. Unset,
     `anthropic` when `ANTHROPIC_API_KEY` is set and `templates` otherwise."""
 
-    ideas_model: str = "claude-opus-5-5"
-    """The Claude model that writes ideas."""
+    ideas_model: str = "claude-sonnet-5-5"
+    """The Claude model that writes ideas. Sonnet 5.5 answered within the contract's 10 s for
+    ideas at `low`; `claude-opus-5-5` also works, at about 17 s (ADR-0009)."""
 
     ideas_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
-    """How hard Claude thinks; `low` keeps an answer within the contract's 10 s budget."""
+    """How hard Claude thinks. Always sent, since the models' own defaults differ; `low` is the
+    fastest."""
 
     @model_validator(mode="after")
     def _one_worker_for_the_models(self) -> "Settings":
