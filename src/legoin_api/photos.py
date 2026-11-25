@@ -61,8 +61,10 @@ class PhotoStore:
         return f"{secrets.token_urlsafe(16)}.jpg"
 
     def save(self, image: Image.Image) -> str:
-        """Writes the upright photo as a JPEG with no EXIF, so no location or camera data."""
+        """Writes the upright photo as a JPEG with no metadata: no EXIF, so no location or
+        camera data, and no comment or XMP. It clears `image.info`, which Pillow would copy."""
         name = self.new_name()
+        image.info = {}
         image.save(self.directory / name, "JPEG", quality=90)
         return name
 

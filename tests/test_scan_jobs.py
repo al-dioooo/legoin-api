@@ -1,3 +1,4 @@
+import io
 import struct
 import threading
 import time
@@ -80,6 +81,20 @@ def test_the_photo_is_stored_upright_and_without_exif(client):
     with Image.open(__import__("io").BytesIO(photo.content)) as image:
         assert image.size == (200, 300)
         assert not image.getexif()
+
+
+def test_the_stored_photo_keeps_no_comment_or_xmp(client):
+    xmp = b'<x:xmpmeta xmlns:x="adobe:ns:meta/">secret-xmp-packet</x:xmpmeta>'
+    data = encode(pieces(), "JPEG", comment=b"secret-jpeg-comment", xmp=xmp)
+    assert b"secret-jpeg-comment" in data and b"secret-xmp-packet" in data
+
+    job = poll(client, upload(client, data, name="photo.jpg", type="image/jpeg").json()["id"])
+    stored = client.get(job["scan"]["photo"]["src"]).content
+
+    assert b"secret-jpeg-comment" not in stored
+    assert b"secret-xmp-packet" not in stored
+    with Image.open(io.BytesIO(stored)) as image:
+        assert not {"comment", "xmp", "exif", "icc_profile"} & set(image.info)
 
 
 @pytest.mark.parametrize(
