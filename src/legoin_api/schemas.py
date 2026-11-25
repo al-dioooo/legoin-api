@@ -22,6 +22,7 @@ Theme = Literal["vehicles", "animals", "buildings", "surprise"]
 IdeaTheme = Literal["vehicles", "animals", "buildings"]
 Difficulty = Literal["easy", "medium", "hard"]
 Locale = Literal["en", "id"]
+PreviewStatus = Literal["pending", "on_open", "ready", "unavailable"]
 
 ErrorCode = Literal[
     "invalid_request",
@@ -112,9 +113,12 @@ class Idea(WireModel):
     used: list[PartCount]
     missing: list[PartCount]
     build_id: Id | None = Field(**_omit_none)
-    """The library build this idea is. Kept with the idea; its `preview` is added on the way
-    out, so its URLs follow the public URL and the files' versions."""
+    """The library build this idea is, or its built preview's (`gen_…`). Kept with the idea;
+    its `preview` is added on the way out, so its URLs follow the public URL and the files'
+    versions."""
     preview: Preview | None = Field(**_omit_none)
+    preview_status: PreviewStatus | None = Field(**_omit_none)
+    """For an idea Claude wrote, when previews are on (ADR-0012, "Idea previews")."""
 
 
 class IdeaSet(WireModel):
