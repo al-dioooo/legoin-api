@@ -1,6 +1,6 @@
 # Contract examples
 
-The example bodies from legoin-docs [`api/contract.md`](https://github.com/al-dioooo/legoin-docs/blob/4ae6f08/api/contract.md), draft v0.1 at `4ae6f08`, copied as they are. The tests check the API against them, so a change to the contract shows up here first.
+The example bodies from legoin-docs [`api/contract.md`](https://github.com/al-dioooo/legoin-docs/blob/a2dbf46/api/contract.md), draft v0.1 at `a2dbf46` (legoin-docs#20, which adds `buildId` and `preview` to ideas), copied as they are. The tests check the API against them, so a change to the contract shows up here first.
 
 | File | Contract example |
 | --- | --- |

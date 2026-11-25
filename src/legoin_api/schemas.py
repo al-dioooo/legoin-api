@@ -85,6 +85,13 @@ class PartCount(WireModel):
     quantity: int = Field(ge=1)
 
 
+class Preview(WireModel):
+    """A checked build's picture and LDraw model, as absolute URLs (ADR-0010)."""
+
+    image: str
+    model: str
+
+
 class Idea(WireModel):
     id: Id
     theme: IdeaTheme
@@ -94,6 +101,10 @@ class Idea(WireModel):
     steps: list[str]
     used: list[PartCount]
     missing: list[PartCount]
+    build_id: Id | None = Field(**_omit_none)
+    """The library build this idea is. Kept with the idea; its `preview` is added on the way
+    out, so its URLs follow the public URL and the files' versions."""
+    preview: Preview | None = Field(**_omit_none)
 
 
 class IdeaSet(WireModel):
