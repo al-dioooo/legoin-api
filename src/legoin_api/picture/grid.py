@@ -132,21 +132,38 @@ def problem_with(spec: dict) -> str | None:
 
 
 class Build:
-    """The pieces placed so far. Ids are `p1`, `p2`, … and never reused."""
+    """The pieces placed so far. Ids are `p1`, `p2`, … and never reused.
 
-    def __init__(self):
+    An idea's preview is limited to the idea's own part and color pairs, `allowed`, and to
+    `max_pieces`; a picture build may use the whole catalogue, up to `MAX_PIECES`.
+    """
+
+    def __init__(
+        self,
+        allowed: frozenset[tuple[str, str]] | None = None,
+        max_pieces: int = MAX_PIECES,
+    ):
         self.pieces: dict[str, Piece] = {}
         self._next = 1
+        self.allowed = allowed
+        self.max_pieces = min(max_pieces, MAX_PIECES)
 
     def place(self, specs: list[dict]) -> list[dict]:
         """Places each piece that fits, in order: its id, or why it couldn't go."""
         answers: list[dict] = []
         for spec in specs:
-            if len(self.pieces) >= MAX_PIECES:
-                answers.append({"error": f"the build already has {MAX_PIECES} pieces, the most"})
+            if len(self.pieces) >= self.max_pieces:
+                answers.append(
+                    {"error": f"the build already has {self.max_pieces} pieces, the most"}
+                )
                 continue
             if problem := problem_with(spec):
                 answers.append({"error": problem})
+                continue
+            if self.allowed is not None and (spec["part"], spec["color"]) not in self.allowed:
+                answers.append(
+                    {"error": f"{spec['color']} {spec['part']} isn't one of this idea's parts"}
+                )
                 continue
             piece = Piece(
                 id=f"p{self._next}",
