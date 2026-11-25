@@ -26,6 +26,10 @@ COPY README.md ./
 COPY src ./src
 RUN uv sync --locked --no-dev --extra models --no-editable --compile-bytecode
 
+# The library of checked builds: the manifest, previews and models, without their sources
+# (.dockerignore). LEGOIN_BUILDS_DIR's default, `builds`, is relative to this directory.
+COPY builds ./builds
+
 # The model files, downloaded from the pinned release and checked by SHA-256 now, so the
 # container starts without network access.
 ENV LEGOIN_MODEL_TAG=v0.2.0 \

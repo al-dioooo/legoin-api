@@ -1,6 +1,9 @@
 from conftest import DEVICE
 
+from legoin_api.schemas import IdeaSet
+
 HEADERS = {"Legoin-Device-Id": DEVICE}
+BASE = "http://testserver"
 
 
 def test_no_scans_is_an_empty_list(client):
@@ -101,7 +104,10 @@ def test_confirming_a_piece_keeps_the_ideas(client, seed, example):
         json={"changes": [{"type": "edit", "id": "det_a3", "part": "brick-2x2"}]},
     ).json()
 
-    assert body["ideas"] == ideas
+    # The race car's preview is worked out on the way out, from this server's URL.
+    library = client.app.state.builds
+    assert body["ideas"] == library.with_previews(IdeaSet.model_validate(ideas), BASE).wire()
+    assert body["ideas"]["items"][0]["preview"]["image"].startswith(f"{BASE}/v1/builds/race-car/")
     assert body["lastTheme"] == "vehicles"
     assert body["detections"][2]["edited"] is True
     assert body["detections"][2]["confidence"] == 0.58

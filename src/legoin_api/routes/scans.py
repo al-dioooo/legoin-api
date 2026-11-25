@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Response
 
-from legoin_api.deps import DeviceId, PhotosDep, PhotoUrlsDep, StoreDep
+from legoin_api.deps import DeviceId, PhotosDep, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ids import new_id
 from legoin_api.inventory import apply_changes, same_inventory
@@ -17,12 +17,12 @@ def scan_not_found(scan_id: str) -> ApiError:
 
 
 @router.get("/scans")
-def list_scans(device: DeviceId, store: StoreDep, urls: PhotoUrlsDep) -> ScanList:
+def list_scans(device: DeviceId, store: StoreDep, urls: PublicUrlsDep) -> ScanList:
     return ScanList(scans=[scan.to_wire(urls) for scan in store.list_scans(device)])
 
 
 @router.get("/scans/{scan_id}")
-def get_scan(scan_id: str, device: DeviceId, store: StoreDep, urls: PhotoUrlsDep) -> Scan:
+def get_scan(scan_id: str, device: DeviceId, store: StoreDep, urls: PublicUrlsDep) -> Scan:
     scan = store.get_scan(device, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
@@ -31,7 +31,7 @@ def get_scan(scan_id: str, device: DeviceId, store: StoreDep, urls: PhotoUrlsDep
 
 @router.patch("/scans/{scan_id}/detections")
 def update_detections(
-    scan_id: str, body: DetectionChanges, device: DeviceId, store: StoreDep, urls: PhotoUrlsDep
+    scan_id: str, body: DetectionChanges, device: DeviceId, store: StoreDep, urls: PublicUrlsDep
 ) -> Scan:
     def correct(scan: StoredScan) -> StoredScan:
         taken = {d.id for d in scan.detections}

@@ -11,12 +11,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from legoin_api import __version__, errors
+from legoin_api.builds import BuildLibrary
 from legoin_api.config import IdeasGeneratorKind, PipelineKind, Settings
 from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
 from legoin_api.pipeline import Pipeline
-from legoin_api.routes import health, ideas, photos, scan_jobs, scans
+from legoin_api.routes import builds, health, ideas, photos, scan_jobs, scans
 from legoin_api.store import Store
 
 log = logging.getLogger("legoin_api")
@@ -104,6 +105,7 @@ def create_app(
 
     app = FastAPI(title="Legoin API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.state.builds = BuildLibrary(settings.builds_dir)
 
     # Before CORS, so the CORS middleware wraps every answer, errors included.
     errors.install(app)
@@ -120,4 +122,5 @@ def create_app(
     app.include_router(scans.router)
     app.include_router(ideas.router)
     app.include_router(photos.router)
+    app.include_router(builds.router)
     return app

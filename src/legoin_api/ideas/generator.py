@@ -26,6 +26,9 @@ class ProposedIdea:
     steps: list[str]
     requires: list[PartCount]
     """Every part the build needs, owned or not."""
+    build_id: str | None = None
+    """The library build this is (ADR-0010), whose text and parts it has; None for a build
+    written freely."""
 
 
 @dataclass(frozen=True)
@@ -129,6 +132,8 @@ class Template:
             summary=self.summary[locale],
             steps=list(self.steps[locale]),
             requires=list(self.requires),
+            # Each template is the build with its id (`tests/test_builds.py`).
+            build_id=self.id,
         )
 
 

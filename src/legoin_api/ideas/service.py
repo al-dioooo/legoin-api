@@ -78,6 +78,7 @@ async def write_ideas(
                 steps=proposal.steps,
                 used=used,
                 missing=missing,
+                build_id=proposal.build_id,
             )
             keys[slot] = proposal.key
     if any(idea is None for idea in ideas):
