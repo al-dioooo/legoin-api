@@ -2,6 +2,62 @@
   "about": "Written by scripts/builds.py with bricklayer-sdk 0.1.0 and brickwright 0.1.0. Don't edit by hand.",
   "builds": [
     {
+      "id": "crab",
+      "theme": "animals",
+      "difficulty": "medium",
+      "title": {
+        "en": "Crab",
+        "id": "Kepiting"
+      },
+      "summary": {
+        "en": "A red body with two claws and black eyes.",
+        "id": "Badan merah dengan dua capit dan mata hitam."
+      },
+      "steps": {
+        "en": [
+          "Use the red 2×4 brick as the body.",
+          "Put a red 1×2 brick on each front corner, sticking out one stud to the side, as claws.",
+          "Add the two black 1×1 rounds between the claws as eyes."
+        ],
+        "id": [
+          "Pakai brick 2×4 merah sebagai badan.",
+          "Pasang brick 1×2 merah di tiap sudut depan, menjorok satu stud ke samping, sebagai capit.",
+          "Tambahkan dua round 1×1 hitam di antara capit sebagai mata."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x2",
+          "color": "red",
+          "quantity": 2
+        },
+        {
+          "part": "round-1x1",
+          "color": "black",
+          "quantity": 2
+        },
+        {
+          "part": "brick-2x4",
+          "color": "red",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "crab/build.py",
+          "sha256": "4a740d94eac707f7f1b3d6f780159941a923ba9aec67d82edaa404b375498f69"
+        },
+        "model": {
+          "path": "crab/model.ldr",
+          "sha256": "56430b1aef20d9e44a3bebbf3e57c7b310e9176ed699b9ed08c2808e3b72fac0"
+        },
+        "preview": {
+          "path": "crab/preview.webp",
+          "sha256": "74561fe47a5235d71dad5b47fb9400b73a4d5fc9127c22456e6dc7c2c3bd448b"
+        }
+      }
+    },
+    {
       "id": "delivery-truck",
       "theme": "vehicles",
       "difficulty": "medium",
@@ -248,6 +304,138 @@
       }
     },
     {
+      "id": "penguin",
+      "theme": "animals",
+      "difficulty": "medium",
+      "title": {
+        "en": "Penguin",
+        "id": "Penguin"
+      },
+      "summary": {
+        "en": "Black body, white belly, orange feet.",
+        "id": "Badan hitam, perut putih, kaki oranye."
+      },
+      "steps": {
+        "en": [
+          "Start with the orange 2×2 plate as the feet.",
+          "Put the white 1×2 brick on its front row as the belly, and the black 1×2 brick behind it as the back.",
+          "Put the black 2×2 brick on the black brick, sticking out one stud at the back, as the head, and the yellow 1×1 round on the belly in front of it as the beak."
+        ],
+        "id": [
+          "Mulai dengan plate 2×2 oranye sebagai kaki.",
+          "Pasang brick 1×2 putih di baris depannya sebagai perut, lalu brick 1×2 hitam di belakangnya sebagai punggung.",
+          "Pasang brick 2×2 hitam di atas brick hitam, menjorok satu stud ke belakang, sebagai kepala, lalu round 1×1 kuning di atas perut, di depan kepala, sebagai paruh."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x2",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "brick-1x2",
+          "color": "white",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x2",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x2",
+          "color": "orange",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "penguin/build.py",
+          "sha256": "cab636a8faa78ec1d434ce360651180e71011813a7f21d763b4e90002b6db4de"
+        },
+        "model": {
+          "path": "penguin/model.ldr",
+          "sha256": "6539a5ffc7e9df1a0ba9e208a07016ceb0ec87a031bc297a3b8b41433e43a741"
+        },
+        "preview": {
+          "path": "penguin/preview.webp",
+          "sha256": "0adc3c5caed5f576fcb52da236f9d95eaf897cb3e3821572a993ff0921da64e9"
+        }
+      }
+    },
+    {
+      "id": "puppy",
+      "theme": "animals",
+      "difficulty": "hard",
+      "title": {
+        "en": "Puppy",
+        "id": "Anak anjing"
+      },
+      "summary": {
+        "en": "Brown body, black ears and a round nose.",
+        "id": "Badan cokelat, telinga hitam, dan hidung bulat."
+      },
+      "steps": {
+        "en": [
+          "Stand the brown 2×4 brick on four brown 1×1 bricks as the body and legs.",
+          "Add the brown 2×2 brick on the front, sticking out one stud, as the head.",
+          "Put the black 1×1 round on the front of the head as the nose, and the two black 1×2 plates on its back row, sticking out to the sides, as ears."
+        ],
+        "id": [
+          "Berdirikan brick 2×4 cokelat di atas empat brick 1×1 cokelat sebagai badan dan kaki.",
+          "Pasang brick 2×2 cokelat di bagian depan, menjorok satu stud, sebagai kepala.",
+          "Taruh round 1×1 hitam di depan kepala sebagai hidung, lalu dua plate 1×2 hitam di baris belakangnya, menjorok ke samping, sebagai telinga."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "brown",
+          "quantity": 4
+        },
+        {
+          "part": "plate-1x2",
+          "color": "black",
+          "quantity": 2
+        },
+        {
+          "part": "brick-2x2",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x4",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "black",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "puppy/build.py",
+          "sha256": "24517e65a86422eac5083c9f7d26267bce8f962662e8c207f839bfc08b5eff0d"
+        },
+        "model": {
+          "path": "puppy/model.ldr",
+          "sha256": "3af04bfc6e99bf52597e870538718a6391e488e7a47f19b3abef612210f4bbd8"
+        },
+        "preview": {
+          "path": "puppy/preview.webp",
+          "sha256": "a5001bebdc7f16f768b29c0eb74fbd6ee59fb32d15ab73cb91a011d7c710284f"
+        }
+      }
+    },
+    {
       "id": "race-car",
       "theme": "vehicles",
       "difficulty": "easy",
@@ -431,6 +619,62 @@
       }
     },
     {
+      "id": "snail",
+      "theme": "animals",
+      "difficulty": "easy",
+      "title": {
+        "en": "Snail",
+        "id": "Siput"
+      },
+      "summary": {
+        "en": "A dark gray shell on a brown body.",
+        "id": "Cangkang abu-abu gelap di atas badan cokelat."
+      },
+      "steps": {
+        "en": [
+          "Lay the brown 1×3 brick down as the body.",
+          "Put the dark gray 2×2 brick on the back half as the shell.",
+          "Add the yellow round at the front as the eye."
+        ],
+        "id": [
+          "Letakkan brick 1×3 cokelat sebagai badan.",
+          "Pasang brick 2×2 abu-abu gelap di setengah belakang sebagai cangkang.",
+          "Tambahkan round kuning di depan sebagai mata."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x3",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x2",
+          "color": "dark-gray",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "snail/build.py",
+          "sha256": "2eef3a79381b12f907fd2c9636c5d607259727127405ede8491159a2b549fe81"
+        },
+        "model": {
+          "path": "snail/model.ldr",
+          "sha256": "8b10bd9d530e0bb6fca85636cf161ea40926e89c106f5ea2f8797d525ecdae28"
+        },
+        "preview": {
+          "path": "snail/preview.webp",
+          "sha256": "2a2047fe464110d1648c2ad9d11e903dc0b071a326ae0d71d774176b48a8b46b"
+        }
+      }
+    },
+    {
       "id": "tractor",
       "theme": "vehicles",
       "difficulty": "medium",
@@ -483,6 +727,62 @@
         "preview": {
           "path": "tractor/preview.webp",
           "sha256": "6504aa658f87bda380ac258a455947bcee729f01d759bb851d6750608dc1663f"
+        }
+      }
+    },
+    {
+      "id": "turtle",
+      "theme": "animals",
+      "difficulty": "easy",
+      "title": {
+        "en": "Turtle",
+        "id": "Kura-kura"
+      },
+      "summary": {
+        "en": "A green slope shell on a flat base.",
+        "id": "Tempurung slope hijau di atas alas datar."
+      },
+      "steps": {
+        "en": [
+          "Lay a green 2×4 plate as the base.",
+          "Put the green 2×2 slope in the middle as the shell.",
+          "Add a green 1×1 brick at the front as the head."
+        ],
+        "id": [
+          "Letakkan plate 2×4 hijau sebagai alas.",
+          "Pasang slope 2×2 hijau di tengah sebagai tempurung.",
+          "Tambahkan brick 1×1 hijau di depan sebagai kepala."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "green",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x4",
+          "color": "green",
+          "quantity": 1
+        },
+        {
+          "part": "slope-2x2",
+          "color": "green",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "turtle/build.py",
+          "sha256": "9e2600cabef96448364c17d99cbe1f0c1204056683c179be74d9607bdc733bb8"
+        },
+        "model": {
+          "path": "turtle/model.ldr",
+          "sha256": "364484741e34a7f8af6542d39d7602f71cc4cb91a4d11e8530d1ba94a76a3d06"
+        },
+        "preview": {
+          "path": "turtle/preview.webp",
+          "sha256": "f8acddfa0c40f7b498bfec8a0ae4dc6ba097c9a2fdcdb75c1ae034be3799b42f"
         }
       }
     }
