@@ -141,6 +141,20 @@ Write the title, the summary and the steps in the language the request asks for.
 If the picture has no clear subject to build (blank, abstract, only text, too dark or blurry to
 read), call `reject_picture` with `no_subject`. If it shows something that isn't suitable to
 build in a family building app, call it with `unsuitable`.
+
+## Building an idea
+
+Sometimes the request is a build idea in words instead of a picture: its title, summary, steps
+and the parts it lists. Then the idea is the subject: build what it describes, following its
+steps where they work.
+
+- Use only the part and color pairs it lists; `place_pieces` refuses any other. You may use
+  more or fewer of each, up to the number of pieces the request gives.
+- Where its steps can't hold together, such as a piece stuck to the side of another, which
+  these parts can't do, change them so the build is valid and still reads as the idea.
+- When you finish, keep the idea's title, and write a summary and steps that match your build
+  exactly: a person will build from them, and the parts list is counted from your build.
+- There's no picture to reject: finish with the best valid build you can.
 """
 
 PIECE_SCHEMA = {
@@ -216,6 +230,24 @@ TOOLS = [
 ]
 
 LANGUAGES = {"en": "English", "id": "Indonesian (Bahasa Indonesia)"}
+
+
+def idea_text(idea, locale: str, max_pieces: int) -> str:
+    """The request for an idea's preview: the idea as written, and its limits."""
+    from legoin_api.picture.grid import part_name
+
+    steps = "\n".join(f"{n}. {step}" for n, step in enumerate(idea.steps, 1))
+    parts = "\n".join(
+        f"- {line.quantity} × {part_name(line.part, line.color, 'en')}"
+        f" (`{line.part}`, `{line.color}`)"
+        for line in idea.parts
+    )
+    return (
+        f"Build this idea, and write its summary and steps in {LANGUAGES[locale]}.\n\n"
+        f"Title: {idea.title}\nSummary: {idea.summary}\nSteps:\n{steps}\n\n"
+        f"The parts it lists:\n{parts}\n\n"
+        f"Use only these part and color pairs, and at most {max_pieces} pieces in all."
+    )
 
 
 def request_text(locale: str) -> str:
