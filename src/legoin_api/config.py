@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     """The absolute base for `photo.src`, e.g. `https://api.example.com`. Unset, each answer
     uses the URL its request came in on."""
 
+    scan_timeout_s: float = 30.0
+    """A scan job still running this long after its upload fails with `timeout`."""
+
+    scan_workers: int = 1
+    """Scans run at the same time. One by default: torch already uses every core."""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
