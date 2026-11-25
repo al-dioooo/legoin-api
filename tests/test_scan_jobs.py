@@ -5,7 +5,7 @@ import threading
 import time
 
 import pytest
-from conftest import DEVICE
+from conftest import AUTH, OTHER_AUTH, TOKEN
 from fastapi.testclient import TestClient
 from images import empty_table, encode, flat, huge_png, pieces, soft_gradient
 from PIL import Image, ImageFile
@@ -14,7 +14,7 @@ from legoin_api.main import create_app
 from legoin_api.photos import MAX_PHOTO_BYTES, MAX_PHOTO_PIXELS
 from legoin_api.pipeline import Found, Reading
 
-HEADERS = {"Legoin-Device-Id": DEVICE}
+HEADERS = AUTH
 
 
 def upload(client, data: bytes, *, name="photo.png", type="image/png", headers=HEADERS):
@@ -128,11 +128,11 @@ def test_an_upload_needs_a_photo_part(client):
     }
 
 
-def test_an_upload_needs_the_device_header(client):
+def test_an_upload_needs_a_session(client):
     response = upload(client, encode(pieces()), headers={})
 
-    assert response.status_code == 400
-    assert response.json()["error"]["field"] == "Legoin-Device-Id"
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
 
 
 @pytest.mark.parametrize(
@@ -255,7 +255,7 @@ def test_a_chunked_upload_is_refused_as_it_streams_not_after(client):
         "root_path": "",
         "headers": [
             (b"host", b"testserver"),
-            (b"legoin-device-id", DEVICE.encode()),
+            (b"authorization", f"Bearer {TOKEN}".encode()),
             (b"content-type", b"multipart/form-data; boundary=x"),
             (b"transfer-encoding", b"chunked"),
         ],
@@ -324,9 +324,9 @@ def test_an_unknown_job_is_not_found_and_cancelling_it_is_fine(client):
     assert client.delete("/v1/scan-jobs/job_nope", headers=HEADERS).status_code == 204
 
 
-def test_a_job_belongs_to_its_device(client):
+def test_a_job_belongs_to_its_account(client):
     job_id = upload(client, encode(pieces())).json()["id"]
-    other = {"Legoin-Device-Id": "someone-else"}
+    other = OTHER_AUTH
 
     assert client.get(f"/v1/scan-jobs/{job_id}", headers=other).status_code == 404
     assert client.delete(f"/v1/scan-jobs/{job_id}", headers=other).status_code == 204

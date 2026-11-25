@@ -7,7 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.types import Message, Receive
 
-from legoin_api.deps import DeviceId, PublicUrlsDep, StoreDep
+from legoin_api.deps import CurrentAccount, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.jobs import JobManager, QueueFull
 from legoin_api.photos import MAX_PHOTO_BYTES, read_photo
@@ -91,7 +91,7 @@ async def _read_upload(request: Request) -> bytes:
 
 
 @router.post("/scan-jobs", status_code=202, openapi_extra=UPLOAD_SCHEMA)
-async def create_scan_job(request: Request, device: DeviceId, jobs: JobsDep) -> RunningJob:
+async def create_scan_job(request: Request, account: CurrentAccount, jobs: JobsDep) -> RunningJob:
     data = await _read_upload(request)
     # A place in the queue first, so no more photos are decoded or held than it allows.
     try:
@@ -105,7 +105,7 @@ async def create_scan_job(request: Request, device: DeviceId, jobs: JobsDep) -> 
     try:
         # Decoding takes a while for a large photo, so it runs off the event loop.
         image = await run_in_threadpool(read_photo, data)
-        job = jobs.submit(device, image, reserved=True)
+        job = jobs.submit(account.id, image, reserved=True)
     except BaseException:
         jobs.release()
         raise
@@ -114,9 +114,9 @@ async def create_scan_job(request: Request, device: DeviceId, jobs: JobsDep) -> 
 
 @router.get("/scan-jobs/{job_id}")
 def get_scan_job(
-    job_id: str, device: DeviceId, jobs: JobsDep, store: StoreDep, urls: PublicUrlsDep
+    job_id: str, account: CurrentAccount, jobs: JobsDep, store: StoreDep, urls: PublicUrlsDep
 ) -> ScanJob:
-    job = jobs.get(device, job_id)
+    job = jobs.get(account.id, job_id)
     if job is None:
         raise ApiError("not_found", f"No scan job {job_id}.")
     if job.status == "running":
@@ -124,7 +124,7 @@ def get_scan_job(
     if job.status == "failed":
         assert job.error is not None
         return FailedJob(id=job.id, error=job.error)
-    scan = store.get_scan(device, job.scan_id or "")
+    scan = store.get_scan(account.id, job.scan_id or "")
     if scan is None:
         # The scan was deleted since; the job has nothing left to show.
         raise ApiError("not_found", f"No scan job {job_id}.")
@@ -132,6 +132,6 @@ def get_scan_job(
 
 
 @router.delete("/scan-jobs/{job_id}", status_code=204)
-def cancel_scan_job(job_id: str, device: DeviceId, jobs: JobsDep) -> Response:
-    jobs.cancel(device, job_id)
+def cancel_scan_job(job_id: str, account: CurrentAccount, jobs: JobsDep) -> Response:
+    jobs.cancel(account.id, job_id)
     return Response(status_code=204)

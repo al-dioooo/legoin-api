@@ -1,5 +1,6 @@
 import threading
 
+from conftest import ACCOUNT
 from images import pieces
 from test_scan_jobs import GatedPipeline
 
@@ -35,14 +36,14 @@ def test_ended_jobs_are_forgotten_after_ten_minutes(tmp_path):
         PhotoStore(tmp_path / "photos"),
         clock=lambda: now[0],
     )
-    job = jobs.submit("device", pieces())
+    job = jobs.submit(ACCOUNT, pieces())
     jobs._executor.submit(lambda: None).result(timeout=5)
-    assert jobs.get("device", job.id).status == "done"
+    assert jobs.get(ACCOUNT, job.id).status == "done"
 
     now[0] = 599.0
-    assert jobs.get("device", job.id) is not None
+    assert jobs.get(ACCOUNT, job.id) is not None
     now[0] = 601.0
-    assert jobs.get("device", job.id) is None
+    assert jobs.get(ACCOUNT, job.id) is None
     jobs.shutdown()
 
 
@@ -50,8 +51,8 @@ def test_shutting_down_waits_for_the_running_job_and_saves_nothing(tmp_path):
     pipeline = GatedPipeline()
     store, photos = Store(tmp_path / "db"), PhotoStore(tmp_path / "photos")
     jobs = JobManager(pipeline, store, photos)
-    jobs.submit("device", pieces())
-    jobs.submit("device", pieces())
+    jobs.submit(ACCOUNT, pieces())
+    jobs.submit(ACCOUNT, pieces())
     assert pipeline.entered["detect"].wait(5)
 
     stopping = threading.Thread(target=jobs.shutdown)
@@ -64,7 +65,7 @@ def test_shutting_down_waits_for_the_running_job_and_saves_nothing(tmp_path):
     assert not stopping.is_alive()
     # The running job stopped at its next stage and the waiting one never started.
     assert not pipeline.entered["classify"].is_set()
-    assert store.list_scans("device") == []
+    assert store.list_scans(ACCOUNT) == []
     assert not any(photos.directory.iterdir())
     store.close()
 
@@ -72,7 +73,7 @@ def test_shutting_down_waits_for_the_running_job_and_saves_nothing(tmp_path):
 def test_shutting_down_gives_up_on_a_stuck_job(tmp_path, caplog):
     pipeline = GatedPipeline()
     jobs = JobManager(pipeline, Store(tmp_path / "db"), PhotoStore(tmp_path / "photos"))
-    jobs.submit("device", pieces())
+    jobs.submit(ACCOUNT, pieces())
     assert pipeline.entered["detect"].wait(5)
 
     jobs.shutdown(timeout_s=0.1)

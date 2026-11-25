@@ -46,7 +46,7 @@ SHUTDOWN_WAIT_S = 5.0
 @dataclass
 class Job:
     id: str
-    device_id: str
+    account_id: str
     deadline: float
     image: Image.Image | None
     status: Literal["running", "done", "failed"] = "running"
@@ -136,12 +136,12 @@ class JobManager:
         with self._lock:
             self._queued -= 1
 
-    def submit(self, device_id: str, image: Image.Image, *, reserved: bool = False) -> Job:
+    def submit(self, account_id: str, image: Image.Image, *, reserved: bool = False) -> Job:
         """Queues a job. Without `reserved`, it takes its own place or raises `QueueFull`;
         with it, a place taken by `reserve`, which stays the caller's if this raises."""
         if not reserved:
             self.reserve()
-        job = Job(new_id("job"), device_id, self.clock() + self.timeout_s, image)
+        job = Job(new_id("job"), account_id, self.clock() + self.timeout_s, image)
         with self._lock:
             self._forget_ended()
             self._jobs[job.id] = job
@@ -163,26 +163,26 @@ class JobManager:
         with self._lock:
             self._running_futures.discard(future)
 
-    def get(self, device_id: str, job_id: str) -> Job | None:
-        """A copy of the job as it is now, or None if this device has no such job."""
+    def get(self, account_id: str, job_id: str) -> Job | None:
+        """A copy of the job as it is now, or None if this account has no such job."""
         with self._lock:
             self._forget_ended()
             job = self._jobs.get(job_id)
-            if job is None or job.device_id != device_id:
+            if job is None or job.account_id != account_id:
                 return None
             self._check_deadline(job)
             return replace(job, image=None)
 
-    def cancel(self, device_id: str, job_id: str) -> None:
+    def cancel(self, account_id: str, job_id: str) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if job is None or job.device_id != device_id:
+            if job is None or job.account_id != account_id:
                 return
             job.cancelled = True
             del self._jobs[job_id]
             saved = job.scan_id if job.status == "done" else None
         if saved:
-            scan = self.store.delete_scan(device_id, saved)
+            scan = self.store.delete_scan(account_id, saved)
             if scan:
                 self.photos.delete(scan.photo_file)
 
@@ -243,7 +243,7 @@ class JobManager:
                 if self._running(job):
                     scan = StoredScan(
                         id=new_id("scn", 12),
-                        device_id=job.device_id,
+                        account_id=job.account_id,
                         created_at=utc_now(),
                         photo_file=photo,
                         photo_width=image.width,

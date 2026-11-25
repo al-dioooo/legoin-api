@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import anthropic
 import httpx2
 import pytest
-from conftest import DEVICE
+from conftest import ACCOUNT, AUTH
 from fastapi.testclient import TestClient
 
 from legoin_api.builds import BuildLibrary
@@ -22,7 +22,7 @@ from legoin_api.ideas.prompt import IDEAS_SCHEMA, SYSTEM_PROMPT
 from legoin_api.main import create_app
 from legoin_api.schemas import PartCount
 
-HEADERS = {"Legoin-Device-Id": DEVICE}
+HEADERS = AUTH
 
 INVENTORY = [
     PartCount(part="brick-2x4", color="red", quantity=1),
@@ -344,7 +344,7 @@ def api(settings, example):
         app.state.store.insert_scan(
             StoredScan(
                 scan["id"],
-                DEVICE,
+                ACCOUNT,
                 scan["createdAt"],
                 app.state.photos.new_name(),
                 1200,

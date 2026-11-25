@@ -11,18 +11,6 @@ from legoin_api.photos import PhotoStore
 from legoin_api.schemas import IdeaSet
 from legoin_api.store import Store, StoredAccount
 
-DEVICE_HEADER = "Legoin-Device-Id"
-
-DeviceId = Annotated[
-    str,
-    Header(
-        alias=DEVICE_HEADER,
-        pattern=r"^[A-Za-z0-9._-]{1,128}$",
-        description="The contract's placeholder for accounts: a random id the browser keeps.",
-    ),
-]
-"""Every contract route needs it; the backend only shows a device its own scans."""
-
 
 def bearer_token(authorization: str | None) -> str | None:
     """The token in `Authorization: Bearer <token>`, or None if there's no such header."""

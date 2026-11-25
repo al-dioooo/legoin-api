@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from conftest import DEVICE
+from conftest import ACCOUNT, AUTH, OTHER_AUTH
 from fastapi.testclient import TestClient
 
 from legoin_api.ideas.generator import (
@@ -16,7 +16,7 @@ from legoin_api.inventory import cek_inventori, merge
 from legoin_api.main import create_app
 from legoin_api.schemas import PartCount
 
-HEADERS = {"Legoin-Device-Id": DEVICE}
+HEADERS = AUTH
 TITLES = {locale: {t["title"][locale]: t for t in TEMPLATES} for locale in ("en", "id")}
 
 
@@ -226,7 +226,7 @@ def test_a_scan_with_no_pieces_gets_409_no_pieces(client, seed, example):
 
 def test_ideas_for_an_unknown_scan_are_not_found(client, corrected):
     assert ask(client, scan="scn_nope").status_code == 404
-    other = {"Legoin-Device-Id": "someone-else"}
+    other = OTHER_AUTH
     body = {"theme": "vehicles", "locale": "en"}
     assert client.post("/v1/scans/scn_4kd2p9/ideas", headers=other, json=body).status_code == 404
 
@@ -298,7 +298,7 @@ def test_deleting_the_scan_deletes_its_ideas(client, corrected):
     client.delete("/v1/scans/scn_4kd2p9", headers=HEADERS)
 
     assert client.get(f"/v1/scans/scn_4kd2p9/ideas/{idea}", headers=HEADERS).status_code == 404
-    assert client.app.state.store.written_ideas(DEVICE, "scn_4kd2p9") == []
+    assert client.app.state.store.written_ideas(ACCOUNT, "scn_4kd2p9") == []
 
 
 # Generators that misbehave
@@ -349,7 +349,7 @@ def with_generator(settings, example):
         app.state.store.insert_scan(
             StoredScan(
                 scan["id"],
-                DEVICE,
+                ACCOUNT,
                 scan["createdAt"],
                 app.state.photos.new_name(),
                 1200,
@@ -421,7 +421,7 @@ class CorrectedWhileWriting:
         def correct(scan):
             return scan.with_changes(detections=[d for d in scan.detections if d.id in self.keep])
 
-        self.app.state.store.modify_scan(DEVICE, "scn_4kd2p9", correct)
+        self.app.state.store.modify_scan(ACCOUNT, "scn_4kd2p9", correct)
         return await TemplateIdeaGenerator().propose(request)
 
 
@@ -458,4 +458,4 @@ def test_a_concurrent_correction_that_removes_every_piece_is_no_pieces(with_gene
     scan = client.get("/v1/scans/scn_4kd2p9", headers=HEADERS).json()
     assert scan["lastTheme"] == "animals"
     assert "ideas" not in scan
-    assert client.app.state.store.written_ideas(DEVICE, "scn_4kd2p9") == []
+    assert client.app.state.store.written_ideas(ACCOUNT, "scn_4kd2p9") == []

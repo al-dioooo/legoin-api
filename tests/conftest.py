@@ -5,8 +5,10 @@ import pytest
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
+from legoin_api.accounts import token_hash
 from legoin_api.config import Settings
 from legoin_api.main import create_app
+from legoin_api.store import Store, StoredAccount
 
 
 @pytest.fixture
@@ -40,7 +42,29 @@ def example():
 
 
 DEVICE = "3b0e6f1c-5d2a-4f7e-9c41-8a2d7e5b9f10"
-"""The device id in the contract's examples."""
+"""The device id in the contract's examples, from before accounts."""
+
+ACCOUNT, TOKEN = "acc_test", "lgn_test-account-token"
+OTHER_ACCOUNT, OTHER_TOKEN = "acc_other", "lgn_other-account-token"
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+OTHER_AUTH = {"Authorization": f"Bearer {OTHER_TOKEN}"}
+"""The headers of two accounts every test store has, logged in."""
+
+
+@pytest.fixture(autouse=True)
+def test_accounts(monkeypatch):
+    """Every store a test opens has `ACCOUNT` and `OTHER_ACCOUNT`, with sessions for `TOKEN`
+    and `OTHER_TOKEN` that don't expire, so any app a test makes takes `AUTH`."""
+    opened = Store.__init__
+
+    def open_with_accounts(self, path):
+        opened(self, path)
+        for account_id, token in ((ACCOUNT, TOKEN), (OTHER_ACCOUNT, OTHER_TOKEN)):
+            account = StoredAccount(account_id, f"{account_id}@legoin.test", "-", "2026-11-25")
+            if self.insert_account(account):
+                self.insert_session(token_hash(token), account_id, "2999-01-01T00:00:00.000Z")
+
+    monkeypatch.setattr(Store, "__init__", open_with_accounts)
 
 
 @pytest.fixture
@@ -49,13 +73,13 @@ def seed(client):
     from legoin_api.schemas import Detection, IdeaSet
     from legoin_api.store import StoredScan
 
-    def put(scan: dict, device: str = DEVICE, **extra) -> StoredScan:
+    def put(scan: dict, account: str = ACCOUNT, **extra) -> StoredScan:
         photos = client.app.state.photos
         name = photos.new_name()
         (photos.directory / name).write_bytes(b"\xff\xd8\xff\xd9")
         stored = StoredScan(
             id=scan["id"],
-            device_id=device,
+            account_id=account,
             created_at=scan["createdAt"],
             photo_file=name,
             photo_width=scan["photo"]["width"],

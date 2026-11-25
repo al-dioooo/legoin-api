@@ -97,9 +97,11 @@ def test_log_in_starts_a_new_session_each_time(client):
 
 
 def test_only_a_hash_of_the_token_is_kept(client):
-    token = register(client).json()["token"]
-    rows = client.app.state.store._db.execute("SELECT token_hash FROM sessions").fetchall()
-    assert [row[0] for row in rows] == [token_hash(token)]
+    session = register(client).json()
+    rows = client.app.state.store._db.execute(
+        "SELECT token_hash FROM sessions WHERE account_id = ?", (session["account"]["id"],)
+    ).fetchall()
+    assert [row[0] for row in rows] == [token_hash(session["token"])]
 
 
 @pytest.mark.parametrize(
@@ -180,9 +182,13 @@ def test_the_scheme_is_case_insensitive(client):
 def test_an_expired_session_is_unauthorized_and_deleted(client):
     token = register(client).json()["token"]
     store = client.app.state.store
-    store._db.execute("UPDATE sessions SET expires_at = '2026-01-01T00:00:00.000Z'")
+    kept = "SELECT COUNT(*) FROM sessions WHERE token_hash = ?"
+    store._db.execute(
+        "UPDATE sessions SET expires_at = '2026-01-01T00:00:00.000Z' WHERE token_hash = ?",
+        (token_hash(token),),
+    )
     assert client.get("/v1/auth/me", headers=bearer(token)).status_code == 401
-    assert store._db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+    assert store._db.execute(kept, (token_hash(token),)).fetchone()[0] == 0
 
 
 def test_an_old_hash_is_redone_on_log_in(client):
