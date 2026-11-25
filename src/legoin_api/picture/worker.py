@@ -2,8 +2,9 @@
 
     python -m legoin_api.picture.worker
 
-It reads the job's spec as JSON on stdin, designs the build, checks it and renders it, and
-reports as JSON lines on stdout, one event a line:
+It reads the job's spec as JSON on stdin, designs the build (of a picture, or of an idea's
+preview when the spec's `kind` is `idea`), checks it and renders it, and reports as JSON lines
+on stdout, one event a line:
 
 - `{"type": "stage", "stage": "designing" | "checking" | "rendering"}`;
 - `{"type": "calling", "worst": 0.31}` before each Claude call, with the most it could cost;
@@ -25,8 +26,9 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from legoin_api.picture.agent import Caps, Outcome, PictureAgent
+from legoin_api.picture.agent import MAX_TOKENS, Caps, IdeaBrief, Outcome, PictureAgent
 from legoin_api.picture.grid import parts_of
+from legoin_api.schemas import PartCount
 
 log = logging.getLogger("legoin_api.picture.worker")
 
@@ -104,11 +106,22 @@ def run(spec: dict, emit: Emit, *, create=None, checks=None, renders=None, expor
         model=spec["model"],
         effort=spec["effort"],
         caps=Caps(spec["maxCalls"], spec["maxCost"], spec["maxSeconds"]),
+        max_tokens=int(spec.get("maxTokens", MAX_TOKENS)),
         before_call=lambda worst: emit({"type": "calling", "worst": worst}),
         on_call=called,
     )
     try:
-        outcome = agent.run(Path(spec["picture"]).read_bytes(), spec["locale"])
+        if spec.get("kind") == "idea":
+            idea = spec["idea"]
+            brief = IdeaBrief(
+                title=idea["title"],
+                summary=idea["summary"],
+                steps=list(idea["steps"]),
+                parts=[PartCount.model_validate(line) for line in idea["parts"]],
+            )
+            outcome = agent.run_idea(brief, spec["locale"])
+        else:
+            outcome = agent.run(Path(spec["picture"]).read_bytes(), spec["locale"])
     except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError):
         log.exception("Claude couldn't be reached for picture job %s", spec["jobId"])
         failed(emit, "unavailable")

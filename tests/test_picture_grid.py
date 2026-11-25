@@ -111,3 +111,14 @@ def test_plain_steps_go_level_by_level_and_stay_short():
         "Your picture build",
         "A 13-piece build of your picture.",
     )
+
+
+def test_an_ideas_build_takes_only_its_pairs_and_its_count():
+    build = Build(allowed=frozenset({("brick-2x4", "red")}), max_pieces=2)
+
+    answers = build.place([piece(), piece(color="blue", z=3), piece(z=3), piece(z=6)])
+
+    assert answers[0] == {"id": "p1"}
+    assert answers[1] == {"error": "blue brick-2x4 isn't one of this idea's parts"}
+    assert answers[2] == {"id": "p2"}
+    assert answers[3] == {"error": "the build already has 2 pieces, the most"}

@@ -26,7 +26,6 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from legoin_api.picture.grid import (
-    MAX_PIECES,
     MAX_STEPS,
     MIN_PIECES,
     Build,
@@ -36,8 +35,8 @@ from legoin_api.picture.grid import (
     size_of,
 )
 from legoin_api.picture.pricing import cost_of, worst_case
-from legoin_api.picture.prompt import SYSTEM, TOOLS, VIEWS, request_text
-from legoin_api.schemas import Locale
+from legoin_api.picture.prompt import SYSTEM, TOOLS, VIEWS, idea_text, request_text
+from legoin_api.schemas import Locale, PartCount
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +128,21 @@ def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode()
 
 
+IDEA_MAX_PIECES = 20
+"""An idea's preview stays small: at most twice the pieces the idea lists, and this many."""
+IDEA_MIN_LIMIT = 6
+
+
+@dataclass(frozen=True)
+class IdeaBrief:
+    """What an idea's preview is built from: the idea as Claude wrote it."""
+
+    title: str
+    summary: str
+    steps: list[str]
+    parts: list[PartCount]
+
+
 class PictureAgent:
     def __init__(
         self,
@@ -139,6 +153,7 @@ class PictureAgent:
         model: str,
         effort: str,
         caps: Caps,
+        max_tokens: int = MAX_TOKENS,
         before_call: Callable[[float], None] | None = None,
         on_call: Callable[[Any, float], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
@@ -150,6 +165,9 @@ class PictureAgent:
         self.model = model
         self.effort = effort
         self.caps = caps
+        self.max_tokens = max_tokens
+        """Per call. An idea's preview takes short turns, so it asks for less, which keeps
+        each call's worst case, and so its cap, small."""
         self.before_call = before_call
         """Hears the worst a call could cost, just before it's made."""
         self.on_call = on_call
@@ -157,22 +175,39 @@ class PictureAgent:
         self.clock = clock
 
     def run(self, picture: bytes, locale: Locale) -> Outcome:
-        return _Run(self, picture, locale).run()
+        """Designs a build of the picture."""
+        content = [picture_block(picture), {"type": "text", "text": request_text(locale)}]
+        return _Run(self, content, locale, Build()).run()
+
+    def run_idea(self, idea: IdeaBrief, locale: Locale) -> Outcome:
+        """Builds an idea's preview, from its own part and color pairs only. The idea's title
+        stays; the summary and steps are Claude's, to match the build."""
+        listed = sum(line.quantity for line in idea.parts)
+        limit = min(IDEA_MAX_PIECES, max(IDEA_MIN_LIMIT, 2 * listed))
+        build = Build(
+            allowed=frozenset((line.part, line.color) for line in idea.parts), max_pieces=limit
+        )
+        content = [{"type": "text", "text": idea_text(idea, locale, limit)}]
+        return _Run(self, content, locale, build, title=idea.title).run()
 
 
 class _Run:
-    def __init__(self, agent: PictureAgent, picture: bytes, locale: Locale):
+    def __init__(
+        self,
+        agent: PictureAgent,
+        content: list[dict],
+        locale: Locale,
+        build: Build,
+        title: str | None = None,
+    ):
         self.agent = agent
         self.locale = locale
         self.started = agent.clock()
-        self.build = Build()
+        self.build = build
+        self.title = title
+        """An idea's title, which the build keeps."""
         self.outcome = Outcome(status="failed", code="no_valid_build")
-        self.messages: list[dict] = [
-            {
-                "role": "user",
-                "content": [picture_block(picture), {"type": "text", "text": request_text(locale)}],
-            }
-        ]
+        self.messages: list[dict] = [{"role": "user", "content": content}]
         self.last_input = 0
         self.worst = 0.0
         self.checked: tuple[tuple[Piece, ...] | None, bool] = (None, False)
@@ -218,7 +253,7 @@ class _Run:
             return "max_calls"
         if agent.clock() - self.started >= agent.caps.max_seconds:
             return "max_seconds"
-        self.worst = worst_case(agent.model, self.last_input + 4000, MAX_TOKENS)
+        self.worst = worst_case(agent.model, self.last_input + 4000, agent.max_tokens)
         if outcome.cost + self.worst > agent.caps.max_cost:
             return "max_cost"
         return None
@@ -229,7 +264,7 @@ class _Run:
             agent.before_call(self.worst)
         response = agent.create(
             model=agent.model,
-            max_tokens=MAX_TOKENS,
+            max_tokens=agent.max_tokens,
             # The stable prefix, cached on its own; top-level caching follows the conversation.
             system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
             cache_control={"type": "ephemeral"},
@@ -325,7 +360,7 @@ class _Run:
             "ok": not problems,
             "problems": problems,
             "pieces": len(pieces),
-            "maxPieces": MAX_PIECES,
+            "maxPieces": self.build.max_pieces,
             "size": size_of(pieces),
             "turnsLeft": left,
             "list": [piece.describe() for piece in pieces],
@@ -350,7 +385,7 @@ class _Run:
 
     def _finish(self, args: dict, turn: _Turn) -> tuple[Any, bool]:
         pieces = self.build.snapshot()
-        title = str(args.get("title") or "").strip()
+        title = self.title or str(args.get("title") or "").strip()
         summary = str(args.get("summary") or "").strip()
         steps = [str(step).strip() for step in args.get("steps") or [] if str(step).strip()]
         problems = self._report()["problems"]
@@ -379,6 +414,7 @@ class _Run:
         if not self.last_valid:
             return self._end("failed", "no_valid_build")
         title, summary = plain_text(self.last_valid, self.locale)
+        title = self.title or title
         steps = layer_steps(self.last_valid, self.locale)
         return self._end("done", cap, self.last_valid, title, summary, steps, "plain")
 

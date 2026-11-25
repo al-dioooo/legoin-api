@@ -9,7 +9,7 @@ from PIL import Image
 
 from legoin_api.errors import ApiError
 from legoin_api.picture.files import PictureFiles
-from legoin_api.picture.jobs import Limits, PictureJobs
+from legoin_api.picture.jobs import Limits, PictureJobs, PreviewLimits
 from legoin_api.picture.store import PictureStore, Spend
 
 LIMITS = Limits(
@@ -330,3 +330,159 @@ def test_leftover_scratch_folders_are_cleared_on_start(make, tmp_path):
     make(Runner())
 
     assert list((tmp_path / "scratch").iterdir()) == []
+
+
+PREVIEWS = PreviewLimits(
+    model="claude-opus-5-5",
+    effort="medium",
+    daily_limit=3,
+    job_cost=0.25,
+    job_seconds=120,
+    job_calls=10,
+    queue_size=4,
+)
+IDEA = {"title": "Little race car", "summary": "Red.", "steps": ["One.", "Two."], "parts": []}
+
+
+class Sink:
+    """Records what reaches the ideas; `keep` says whether an idea is still in its set."""
+
+    def __init__(self, keep=True):
+        self.keep = keep
+        self.built_ideas: list[tuple[str, str]] = []
+        self.failed_ideas: list[str] = []
+
+    def built(self, job, build, result):
+        self.built_ideas.append((job.idea["ideaId"], build.id))
+        return self.keep
+
+    def failed(self, job):
+        self.failed_ideas.append(job.idea["ideaId"])
+
+
+def sink_for(jobs, keep=True):
+    jobs.idea_sink = Sink(keep)
+    return jobs.idea_sink
+
+
+def preview_done(spec, emit, stop):
+    emit({"type": "called", "model": "claude-opus-5-5", "cost": 0.04, "usage": {}})
+    out = Path(spec["out"])
+    (out / "preview.webp").write_bytes(b"webp")
+    (out / "model.ldr").write_text("0 Little race car\n")
+    emit({"type": "done", "build": BUILD})
+
+
+def wait_until(check, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if check():
+            return
+        time.sleep(0.01)
+    raise AssertionError("never happened")
+
+
+def test_a_preview_reaches_its_idea_and_counts_on_its_own(make):
+    jobs = make(Runner(preview_done), previews=PREVIEWS)
+    sink = sink_for(jobs)
+
+    assert jobs.submit_idea("acc_a", "scn_1", "idea_a", IDEA, "en") == "pending"
+    wait_until(lambda: sink.built_ideas)
+
+    idea_id, build_id = sink.built_ideas[0]
+    assert idea_id == "idea_a"
+    build = jobs.store.get_idea_build(build_id)
+    assert build.scan_id == "scn_1" and build_id.startswith("gen_")
+    assert all(jobs.files.path(name).is_file() for name in build.files)
+    assert jobs.store.jobs_counted("acc_a", "2026-11-25", "idea") == 1
+    assert jobs.store.jobs_counted("acc_a", "2026-11-25") == 0
+    assert jobs.store.spent("2026-11-25") == pytest.approx(0.04)
+
+
+def test_the_preview_spec_carries_the_idea_and_its_own_limits(make):
+    runner = Runner(preview_done)
+    jobs = make(runner, previews=PREVIEWS)
+    sink_for(jobs)
+    jobs.submit_idea("acc_a", "scn_1", "idea_a", IDEA, "id")
+    wait_until(lambda: runner.specs)
+
+    spec = runner.specs[0]
+    assert spec["kind"] == "idea" and "picture" not in spec
+    assert spec["idea"] == {"scanId": "scn_1", "ideaId": "idea_a", **IDEA}
+    assert (spec["maxCost"], spec["maxTokens"], spec["deadlineS"]) == (0.25, 4000, 180)
+
+
+def test_a_preview_whose_set_was_replaced_is_dropped(make):
+    jobs = make(Runner(preview_done), previews=PREVIEWS)
+    sink = sink_for(jobs, keep=False)
+
+    jobs.submit_idea("acc_a", "scn_1", "idea_a", IDEA, "en")
+    wait_until(lambda: sink.built_ideas)
+
+    assert jobs.store.get_idea_build(sink.built_ideas[0][1]) is None
+    assert list(jobs.files.directory.iterdir()) == []
+
+
+def test_a_failed_preview_tells_its_idea(make):
+    def fails(spec, emit, stop):
+        emit({"type": "failed", "code": "no_valid_build", "message": "No."})
+
+    jobs = make(Runner(fails), previews=PREVIEWS)
+    sink = sink_for(jobs)
+    jobs.submit_idea("acc_a", "scn_1", "idea_a", IDEA, "en")
+
+    wait_until(lambda: sink.failed_ideas)
+    assert sink.failed_ideas == ["idea_a"]
+
+
+def test_previews_are_unavailable_when_off_over_the_limit_or_the_budget(make):
+    assert make(Runner()).submit_idea("acc_a", "scn_1", "i", IDEA, "en") == "unavailable"
+
+    runner = Runner(preview_done, hold=True)
+    jobs = make(runner, previews=replace(PREVIEWS, daily_limit=2))
+    answers = [jobs.submit_idea("acc_a", "scn_1", f"idea_{i}", IDEA, "en") for i in range(3)]
+    assert answers == ["pending", "pending", "unavailable"]
+    runner.release.set()
+
+    tight = make(Runner(hold=True), previews=PREVIEWS, limits=replace(LIMITS, daily_budget=0.6))
+    answers = [tight.submit_idea("acc_b", "scn_1", f"idea_{i}", IDEA, "en") for i in range(3)]
+    # Each preview reserves $0.25 of the $0.60 budget while it waits.
+    assert answers == ["pending", "pending", "unavailable"]
+
+
+def test_picture_builds_run_before_previews(make):
+    runner = Runner(hold=True)
+    jobs = make(runner, previews=PREVIEWS)
+    sink_for(jobs)
+    jobs.submit("acc_a", picture(), "en")  # runs first, held
+    jobs.submit_idea("acc_a", "scn_1", "idea_a", IDEA, "en")
+    jobs.submit_idea("acc_a", "scn_1", "idea_b", IDEA, "en")
+    jobs.submit("acc_b", picture(), "en")
+    wait_until(lambda: len(runner.specs) == 1)
+
+    runner.release.set()
+    wait_until(lambda: len(runner.specs) == 4)
+
+    kinds = [(spec["kind"], spec.get("idea", {}).get("ideaId")) for spec in runner.specs]
+    assert kinds == [("picture", None), ("picture", None), ("idea", "idea_a"), ("idea", "idea_b")]
+
+
+def test_cancelling_a_sets_previews_stops_them_and_keeps_the_others(make):
+    runner = Runner(hold=True)
+    jobs = make(runner, previews=PREVIEWS)
+    sink = sink_for(jobs)
+    for idea_id in ("idea_a", "idea_b", "idea_c"):
+        jobs.submit_idea("acc_a", "scn_1", idea_id, IDEA, "en")
+    wait_until(lambda: len(runner.specs) == 1)  # idea_a is running
+
+    jobs.cancel_ideas("acc_a", "scn_1", keep=frozenset({"idea_c"}))
+    runner.release.set()
+    wait_until(lambda: len(runner.specs) == 2)
+    time.sleep(0.05)
+
+    assert [spec["idea"]["ideaId"] for spec in runner.specs] == ["idea_a", "idea_c"]
+    assert runner.stopped == [runner.specs[0]["jobId"]]
+    wait_until(lambda: sink.built_ideas)
+    assert [idea for idea, _ in sink.built_ideas] == ["idea_c"]
+    # The queued one that never ran doesn't count; the running one does.
+    assert jobs.store.jobs_counted("acc_a", "2026-11-25", "idea") == 2

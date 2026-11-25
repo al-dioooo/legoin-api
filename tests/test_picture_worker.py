@@ -176,3 +176,26 @@ def test_the_real_worker_module_reports_a_bad_spec_as_internal(spec, tmp_path):
     assert events[-1]["type"] == "failed"
     assert events[-1]["code"] == "internal"
     assert json.dumps(events)  # every line was an event
+
+
+def test_an_idea_spec_builds_the_ideas_preview(spec):
+    from picture_fakes import CAR
+
+    idea = {
+        "scanId": "scn_1",
+        "ideaId": "idea_a",
+        "title": "Little race car",
+        "summary": "Red.",
+        "steps": ["One.", "Two."],
+        "parts": [{"part": p["part"], "color": p["color"], "quantity": 1} for p in CAR],
+    }
+    claude = FakeClaude(happy_script())
+    events, renders = run({**spec, "kind": "idea", "idea": idea, "maxTokens": 4000}, claude)
+
+    assert claude.calls[0]["max_tokens"] == 4000
+    assert claude.calls[0]["messages"][0]["content"][0]["type"] == "text"
+    build = events[-1]["build"]
+    assert events[-1]["type"] == "done"
+    assert build["title"] == "Little race car"
+    assert len(build["pieces"]) == 6
+    assert renders.previews == 1

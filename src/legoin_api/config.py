@@ -32,6 +32,16 @@ class PictureBuildsKind(StrEnum):
     ANTHROPIC = "anthropic"
 
 
+class IdeaPreviewMode(StrEnum):
+    """When ideas Claude wrote get a preview built (ADR-0012, "Idea previews")."""
+
+    ALL = "all"
+    """All three, as soon as the ideas are answered."""
+    ON_OPEN = "on_open"
+    """Only when someone opens that idea's page."""
+    OFF = "off"
+
+
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
@@ -130,6 +140,26 @@ class Settings(BaseSettings):
 
     picture_worker_memory_mb: int = Field(1024, ge=256)
     """The picture worker's resident memory; past it, the worker is killed."""
+
+    idea_previews: IdeaPreviewMode = IdeaPreviewMode.ALL
+    """Previews of the ideas Claude writes, built by the picture engine. They also need Claude
+    ideas, the key, the `picture` extra and the LDraw parts library."""
+
+    idea_preview_model: str = "claude-opus-5-5"
+    """Opus 5.5 made the more faithful previews in the spike, at about $0.04 each."""
+
+    idea_preview_effort: Effort = "medium"
+
+    idea_preview_daily_limit: int = Field(9, ge=0)
+    """Previews each account may start a day (UTC): three sets of ideas with `all`."""
+
+    idea_preview_cost_usd: float = Field(0.25, gt=0)
+    """Dollars one preview may spend. It reserves this much of the picture builds' daily
+    budget, which previews share, while it waits or runs."""
+
+    idea_preview_seconds: float = Field(120.0, gt=0)
+
+    idea_preview_calls: int = Field(10, ge=1)
 
     @model_validator(mode="after")
     def _one_worker_for_the_models(self) -> "Settings":

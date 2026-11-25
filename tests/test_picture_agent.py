@@ -17,8 +17,9 @@ from picture_fakes import (
 )
 from PIL import Image
 
-from legoin_api.picture.agent import MAX_TOKENS, PICTURE_MAX_SIDE, Caps, PictureAgent
+from legoin_api.picture.agent import MAX_TOKENS, PICTURE_MAX_SIDE, Caps, IdeaBrief, PictureAgent
 from legoin_api.picture.prompt import SYSTEM, TOOLS
+from legoin_api.schemas import PartCount
 
 
 class Clock:
@@ -266,3 +267,59 @@ def test_a_bad_tool_or_nothing_to_render_is_an_error_claude_can_read():
     nothing, unknown = results(claude, 1)
     assert nothing["is_error"] and unknown["is_error"]
     assert "no tool 'delete_everything'" in unknown["content"]
+
+
+IDEA = IdeaBrief(
+    title="Little race car",
+    summary="A red car with a green hood.",
+    steps=["Lay the plate.", "Add the body."],
+    parts=[PartCount(part=p["part"], color=p["color"], quantity=1) for p in CAR],
+)
+
+
+def test_an_idea_is_built_from_its_own_pairs_and_keeps_its_title():
+    extra = {"part": "brick-1x1", "color": "white", "x": 5, "y": 5, "z": 0, "rotation": 0}
+    script = [
+        [tool("place_pieces", {"pieces": [*CAR, extra]}), tool("render", {"view": "all"})],
+        [tool("finish", {"title": "Racer", "summary": "Red.", "steps": ["One.", "Two."]})],
+    ]
+    claude = FakeClaude(script)
+
+    outcome = agent(claude).run_idea(IDEA, "id")
+
+    request = claude.calls[0]["messages"][0]["content"]
+    assert len(request) == 1 and request[0]["type"] == "text"
+    assert "Title: Little race car" in request[0]["text"]
+    assert "- 1 × red 2×4 brick (`brick-2x4`, `red`)" in request[0]["text"]
+    assert "at most 12 pieces in all" in request[0]["text"]
+    assert "in Indonesian" in request[0]["text"]
+    placed = json.loads(results(claude, 1)[0]["content"])["placed"]
+    assert placed[-1] == {"error": "white brick-1x1 isn't one of this idea's parts"}
+    assert (outcome.status, outcome.title, outcome.steps) == (
+        "done",
+        "Little race car",
+        ["One.", "Two."],
+    )
+    assert len(outcome.pieces) == 6
+
+
+def test_an_ideas_preview_asks_for_fewer_tokens_and_its_cap_holds():
+    claude = FakeClaude([[tool("validate")]] * 5, spend=usage(output=1_000, write=3_000))
+
+    outcome = agent(claude, caps=Caps(max_cost=0.25), max_tokens=4000).run_idea(IDEA, "en")
+
+    assert claude.calls[0]["max_tokens"] == 4000
+    assert outcome.code == "no_valid_build"
+    assert outcome.cost <= 0.25
+
+
+def test_an_idea_that_runs_out_keeps_its_title_with_plain_steps():
+    claude = FakeClaude([[tool("place_pieces", {"pieces": CAR})], [tool("validate")]])
+
+    outcome = agent(claude, caps=Caps(max_calls=2)).run_idea(IDEA, "en")
+
+    assert (outcome.status, outcome.written_by, outcome.title) == (
+        "done",
+        "plain",
+        "Little race car",
+    )
