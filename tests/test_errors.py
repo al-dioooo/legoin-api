@@ -13,7 +13,7 @@ from legoin_api.schemas import DetectionChanges
         (("body", "changes", 0, "restore", "detection", "box", "x"), "changes[0].detection.box.x"),
         (("body", "changes"), "changes"),
         (("body", "exclude", 3), "exclude[3]"),
-        (("header", "Legoin-Device-Id"), "Legoin-Device-Id"),
+        (("header", "Authorization"), "Authorization"),
         (("body",), ""),
     ],
 )

@@ -119,12 +119,13 @@ def create_app(
 
     # Before CORS, so the CORS middleware wraps every answer, errors included.
     errors.install(app)
-    # The contract's CORS rule: the web app's origins, its four methods and two headers.
+    # The contract's CORS rule: the web app's origins, its four methods and two headers. No
+    # cookies, so no credentials (ADR-0011).
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "Legoin-Device-Id"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     app.include_router(health.router)

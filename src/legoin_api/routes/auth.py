@@ -24,7 +24,10 @@ from legoin_api.store import Store, StoredAccount
 router = APIRouter(prefix="/v1/auth", tags=["accounts"])
 
 
-def start_session(store: Store, account: StoredAccount) -> Session:
+def start_session(store: Store, account: StoredAccount, device_id: str | None) -> Session:
+    """A new session, after moving the scans this browser made before accounts, if any."""
+    if device_id:
+        store.claim_device_scans(device_id, account.id)
     token = new_token()
     expires_at = utc_now(SESSION_LIFETIME)
     store.insert_session(token_hash(token), account.id, expires_at)
@@ -41,7 +44,7 @@ def register(body: Registration, store: StoreDep, passwords: PasswordsDep) -> Se
     )
     if not store.insert_account(account):
         raise ApiError("email_taken", "This email already has an account.")
-    return start_session(store, account)
+    return start_session(store, account, body.device_id)
 
 
 @router.post("/login")
@@ -64,7 +67,7 @@ def log_in(
     failed.succeeded(body.email)
     if passwords.needs_rehash(account.password_hash):
         store.set_password_hash(account.id, passwords.hash(body.password))
-    return start_session(store, account)
+    return start_session(store, account, body.device_id)
 
 
 @router.post("/logout", status_code=204)

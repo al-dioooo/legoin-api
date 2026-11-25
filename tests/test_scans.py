@@ -1,8 +1,9 @@
-from conftest import DEVICE
+import pytest
+from conftest import ACCOUNT, AUTH, OTHER_ACCOUNT, OTHER_AUTH
 
 from legoin_api.schemas import IdeaSet
 
-HEADERS = {"Legoin-Device-Id": DEVICE}
+HEADERS = AUTH
 BASE = "http://testserver"
 
 
@@ -13,18 +14,29 @@ def test_no_scans_is_an_empty_list(client):
     assert response.json() == {"scans": []}
 
 
-def test_every_route_needs_the_device_header(client):
-    response = client.get("/v1/scans")
+ROUTES = [
+    ("get", "/v1/scans"),
+    ("get", "/v1/scans/scn_4kd2p9"),
+    ("patch", "/v1/scans/scn_4kd2p9/detections"),
+    ("delete", "/v1/scans/scn_4kd2p9"),
+    ("post", "/v1/scans/scn_4kd2p9/ideas"),
+    ("get", "/v1/scans/scn_4kd2p9/ideas/idea_r4c8"),
+    ("post", "/v1/scan-jobs"),
+    ("get", "/v1/scan-jobs/job_8c1f2e"),
+    ("delete", "/v1/scan-jobs/job_8c1f2e"),
+]
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_request"
-    assert response.json()["error"]["field"] == "Legoin-Device-Id"
 
+@pytest.mark.parametrize(("method", "path"), ROUTES)
+def test_every_scan_route_needs_a_session(client, seed, example, method, path):
+    """Before any other check: the scan exists and the bodies are empty, yet it's a 401."""
+    seed(example("scan-job-done")["scan"])
+    for headers in ({}, {"Legoin-Device-Id": "3b0e6f1c-5d2a-4f7e-9c41-8a2d7e5b9f10"}):
+        response = client.request(method, path, headers=headers)
 
-def test_a_device_id_must_be_url_safe(client):
-    response = client.get("/v1/scans", headers={"Legoin-Device-Id": "not a/valid id"})
-
-    assert response.status_code == 400
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "unauthorized"
+        assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
 def test_history_is_newest_first_with_full_scans(client, seed, example):
@@ -40,8 +52,8 @@ def test_history_is_newest_first_with_full_scans(client, seed, example):
         assert scan | {"photo": expected["photo"]} == expected
 
 
-def test_a_device_only_sees_its_own_scans(client, seed, example):
-    seed(example("scan-job-done")["scan"], device="someone-else")
+def test_an_account_only_sees_its_own_scans(client, seed, example):
+    seed(example("scan-job-done")["scan"], account=OTHER_ACCOUNT)
 
     assert client.get("/v1/scans", headers=HEADERS).json() == {"scans": []}
     assert client.get("/v1/scans/scn_4kd2p9", headers=HEADERS).status_code == 404
@@ -64,7 +76,7 @@ def test_photo_urls_use_the_public_url_when_set(settings):
     with TestClient(app) as client:
         name = app.state.photos.new_name()
         app.state.store.insert_scan(
-            StoredScan("scn_1", DEVICE, "2026-11-09T03:12:45.120Z", name, 10, 10, [])
+            StoredScan("scn_1", ACCOUNT, "2026-11-09T03:12:45.120Z", name, 10, 10, [])
         )
         src = client.get("/v1/scans/scn_1", headers=HEADERS).json()["photo"]["src"]
 
@@ -179,10 +191,10 @@ def test_deleting_removes_the_scan_and_its_photo_and_can_repeat(client, seed, ex
     assert client.delete("/v1/scans/scn_4kd2p9", headers=HEADERS).status_code == 204
 
 
-def test_another_device_cannot_delete_a_scan(client, seed, example):
+def test_another_account_cannot_delete_a_scan(client, seed, example):
     seed(example("scan-job-done")["scan"])
 
-    client.delete("/v1/scans/scn_4kd2p9", headers={"Legoin-Device-Id": "someone-else"})
+    client.delete("/v1/scans/scn_4kd2p9", headers=OTHER_AUTH)
 
     assert client.get("/v1/scans/scn_4kd2p9", headers=HEADERS).status_code == 200
 

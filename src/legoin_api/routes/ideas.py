@@ -1,4 +1,4 @@
-"""Ideas: three builds for a scan, and one idea read back (contract section 5)."""
+"""Ideas: three builds for a scan, and one idea read back (contract section 6)."""
 
 import asyncio
 from typing import Annotated
@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from starlette.concurrency import run_in_threadpool
 
-from legoin_api.deps import DeviceId, PublicUrlsDep, StoreDep
+from legoin_api.deps import CurrentAccount, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import IdeaGenerator, IdeasUnavailable
 from legoin_api.ideas.service import write_ideas
@@ -27,16 +27,16 @@ GeneratorDep = Annotated[IdeaGenerator, Depends(get_generator)]
 async def create_ideas(
     scan_id: str,
     body: IdeasRequest,
-    device: DeviceId,
+    account: CurrentAccount,
     store: StoreDep,
     generator: GeneratorDep,
     urls: PublicUrlsDep,
     request: Request,
 ) -> IdeaSet:
-    scan = await run_in_threadpool(store.get_scan, device, scan_id)
+    scan = await run_in_threadpool(store.get_scan, account.id, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
-    written = await run_in_threadpool(store.written_ideas, device, scan_id)
+    written = await run_in_threadpool(store.written_ideas, account.id, scan_id)
     timeout = request.app.state.settings.ideas_timeout_s
     try:
         async with asyncio.timeout(timeout):
@@ -49,7 +49,7 @@ async def create_ideas(
         ) from error
     # A request that fails changes nothing; only now is the set kept, and what's kept is
     # what's answered.
-    kept = await run_in_threadpool(store.keep_ideas, device, scan_id, ideas, keys, inventory)
+    kept = await run_in_threadpool(store.keep_ideas, account.id, scan_id, ideas, keys, inventory)
     if kept is None or kept.ideas is None:
         raise scan_not_found(scan_id)
     return urls.with_previews(kept.ideas)
@@ -57,9 +57,9 @@ async def create_ideas(
 
 @router.get("/scans/{scan_id}/ideas/{idea_id}")
 def get_idea(
-    scan_id: str, idea_id: str, device: DeviceId, store: StoreDep, urls: PublicUrlsDep
+    scan_id: str, idea_id: str, account: CurrentAccount, store: StoreDep, urls: PublicUrlsDep
 ) -> StoredIdea:
-    scan = store.get_scan(device, scan_id)
+    scan = store.get_scan(account.id, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
     ideas = urls.with_previews(scan.ideas) if scan.ideas else None

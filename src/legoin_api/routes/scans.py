@@ -1,8 +1,8 @@
-"""Scans: history, one scan, corrections and deletion (contract section 4)."""
+"""Scans: history, one scan, corrections and deletion (contract section 5)."""
 
 from fastapi import APIRouter, Response
 
-from legoin_api.deps import DeviceId, PhotosDep, PublicUrlsDep, StoreDep
+from legoin_api.deps import CurrentAccount, PhotosDep, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ids import new_id
 from legoin_api.inventory import apply_changes, same_inventory
@@ -17,13 +17,13 @@ def scan_not_found(scan_id: str) -> ApiError:
 
 
 @router.get("/scans")
-def list_scans(device: DeviceId, store: StoreDep, urls: PublicUrlsDep) -> ScanList:
-    return ScanList(scans=[scan.to_wire(urls) for scan in store.list_scans(device)])
+def list_scans(account: CurrentAccount, store: StoreDep, urls: PublicUrlsDep) -> ScanList:
+    return ScanList(scans=[scan.to_wire(urls) for scan in store.list_scans(account.id)])
 
 
 @router.get("/scans/{scan_id}")
-def get_scan(scan_id: str, device: DeviceId, store: StoreDep, urls: PublicUrlsDep) -> Scan:
-    scan = store.get_scan(device, scan_id)
+def get_scan(scan_id: str, account: CurrentAccount, store: StoreDep, urls: PublicUrlsDep) -> Scan:
+    scan = store.get_scan(account.id, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
     return scan.to_wire(urls)
@@ -31,7 +31,11 @@ def get_scan(scan_id: str, device: DeviceId, store: StoreDep, urls: PublicUrlsDe
 
 @router.patch("/scans/{scan_id}/detections")
 def update_detections(
-    scan_id: str, body: DetectionChanges, device: DeviceId, store: StoreDep, urls: PublicUrlsDep
+    scan_id: str,
+    body: DetectionChanges,
+    account: CurrentAccount,
+    store: StoreDep,
+    urls: PublicUrlsDep,
 ) -> Scan:
     def correct(scan: StoredScan) -> StoredScan:
         taken = {d.id for d in scan.detections}
@@ -47,15 +51,17 @@ def update_detections(
         ideas = scan.ideas if same_inventory(scan.detections, detections) else None
         return scan.with_changes(detections=detections, ideas=ideas)
 
-    scan = store.modify_scan(device, scan_id, correct)
+    scan = store.modify_scan(account.id, scan_id, correct)
     if scan is None:
         raise scan_not_found(scan_id)
     return scan.to_wire(urls)
 
 
 @router.delete("/scans/{scan_id}", status_code=204)
-def delete_scan(scan_id: str, device: DeviceId, store: StoreDep, photos: PhotosDep) -> Response:
-    scan = store.delete_scan(device, scan_id)
+def delete_scan(
+    scan_id: str, account: CurrentAccount, store: StoreDep, photos: PhotosDep
+) -> Response:
+    scan = store.delete_scan(account.id, scan_id)
     if scan is not None:
         photos.delete(scan.photo_file)
     return Response(status_code=204)

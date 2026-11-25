@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import DEVICE
+from conftest import ACCOUNT, AUTH
 from fastapi.testclient import TestClient
 
 from legoin_api.ideas.templates import TEMPLATES
@@ -12,7 +12,7 @@ from legoin_api.main import create_app
 from legoin_api.schemas import Detection
 from legoin_api.store import StoredScan
 
-HEADERS = {"Legoin-Device-Id": DEVICE}
+HEADERS = AUTH
 BUILDS = Path(__file__).parent.parent / "builds"
 MANIFEST = {
     entry["id"]: entry for entry in json.loads((BUILDS / "manifest.json").read_text())["builds"]
@@ -54,7 +54,7 @@ def test_previews_use_the_public_url_when_set(settings, example):
         client.app.state.store.insert_scan(
             StoredScan(
                 id=scan["id"],
-                device_id=DEVICE,
+                account_id=ACCOUNT,
                 created_at=scan["createdAt"],
                 photo_file=client.app.state.photos.new_name(),
                 photo_width=scan["photo"]["width"],
@@ -88,6 +88,6 @@ def test_the_kept_set_and_one_idea_read_back_carry_the_same_previews(client, cor
 def test_ideas_are_kept_with_their_build_id_only(client, corrected):
     ask(client)
 
-    kept = client.app.state.store.get_scan(DEVICE, "scn_4kd2p9").ideas
+    kept = client.app.state.store.get_scan(ACCOUNT, "scn_4kd2p9").ideas
 
     assert all(idea.build_id and idea.preview is None for idea in kept.items)

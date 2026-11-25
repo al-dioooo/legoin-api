@@ -1,5 +1,5 @@
 """The library's previews and models (ADR-0010): public catalogue content, not anyone's photos,
-so no device header, and cached for good, since each URL carries its file's version."""
+so no `Authorization` header, and cached for good, since each URL carries its file's version."""
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse

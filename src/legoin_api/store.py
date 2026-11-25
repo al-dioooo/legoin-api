@@ -143,7 +143,7 @@ class WireUrls(Protocol):
 @dataclass(frozen=True)
 class StoredScan:
     id: str
-    device_id: str
+    account_id: str
     created_at: str
     photo_file: str
     photo_width: int
@@ -186,7 +186,7 @@ def _row_to_account(row: sqlite3.Row) -> StoredAccount:
 def _row_to_scan(row: sqlite3.Row) -> StoredScan:
     return StoredScan(
         id=row["id"],
-        device_id=row["device_id"],
+        account_id=row["account_id"],
         created_at=row["created_at"],
         photo_file=row["photo_file"],
         photo_width=row["photo_width"],
@@ -222,10 +222,10 @@ class Store:
     def insert_scan(self, scan: StoredScan) -> None:
         with self._lock:
             self._db.execute(
-                f"INSERT INTO scans ({SCAN_COLUMNS}) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO scans ({SCAN_COLUMNS}) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     scan.id,
-                    scan.device_id,
+                    scan.account_id,
                     scan.created_at,
                     scan.photo_file,
                     scan.photo_width,
@@ -236,31 +236,31 @@ class Store:
                 ),
             )
 
-    def get_scan(self, device_id: str, scan_id: str) -> StoredScan | None:
+    def get_scan(self, account_id: str, scan_id: str) -> StoredScan | None:
         with self._lock:
             row = self._db.execute(
-                "SELECT * FROM scans WHERE id = ? AND device_id = ?", (scan_id, device_id)
+                "SELECT * FROM scans WHERE id = ? AND account_id = ?", (scan_id, account_id)
             ).fetchone()
         return _row_to_scan(row) if row else None
 
-    def list_scans(self, device_id: str) -> list[StoredScan]:
-        """This device's scans, newest first."""
+    def list_scans(self, account_id: str) -> list[StoredScan]:
+        """This account's scans, newest first."""
         with self._lock:
             rows = self._db.execute(
-                "SELECT * FROM scans WHERE device_id = ? ORDER BY created_at DESC, id DESC",
-                (device_id,),
+                "SELECT * FROM scans WHERE account_id = ? ORDER BY created_at DESC, id DESC",
+                (account_id,),
             ).fetchall()
         return [_row_to_scan(row) for row in rows]
 
     def modify_scan(
-        self, device_id: str, scan_id: str, change: Callable[[StoredScan], StoredScan]
+        self, account_id: str, scan_id: str, change: Callable[[StoredScan], StoredScan]
     ) -> StoredScan | None:
         """Reads, changes and writes one scan in a single transaction. None if it's not there."""
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 row = self._db.execute(
-                    "SELECT * FROM scans WHERE id = ? AND device_id = ?", (scan_id, device_id)
+                    "SELECT * FROM scans WHERE id = ? AND account_id = ?", (scan_id, account_id)
                 ).fetchone()
                 if row is None:
                     self._db.execute("ROLLBACK")
@@ -281,19 +281,19 @@ class Store:
                 self._db.execute("ROLLBACK")
                 raise
 
-    def written_ideas(self, device_id: str, scan_id: str) -> list[ShownIdea]:
-        """Every idea written for one of this device's scans, oldest first."""
+    def written_ideas(self, account_id: str, scan_id: str) -> list[ShownIdea]:
+        """Every idea written for one of this account's scans, oldest first."""
         with self._lock:
             rows = self._db.execute(
                 "SELECT i.* FROM ideas_written i JOIN scans s ON s.id = i.scan_id"
-                " WHERE i.scan_id = ? AND s.device_id = ? ORDER BY i.written_at, i.rowid",
-                (scan_id, device_id),
+                " WHERE i.scan_id = ? AND s.account_id = ? ORDER BY i.written_at, i.rowid",
+                (scan_id, account_id),
             ).fetchall()
         return [ShownIdea(row["idea_id"], row["key"], row["theme"], row["title"]) for row in rows]
 
     def keep_ideas(
         self,
-        device_id: str,
+        account_id: str,
         scan_id: str,
         ideas: IdeaSet,
         keys: list[str],
@@ -312,7 +312,7 @@ class Store:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 row = self._db.execute(
-                    "SELECT * FROM scans WHERE id = ? AND device_id = ?", (scan_id, device_id)
+                    "SELECT * FROM scans WHERE id = ? AND account_id = ?", (scan_id, account_id)
                 ).fetchone()
                 if row is None:
                     self._db.execute("ROLLBACK")
@@ -342,11 +342,12 @@ class Store:
                 self._db.execute("ROLLBACK")
                 raise
 
-    def delete_scan(self, device_id: str, scan_id: str) -> StoredScan | None:
+    def delete_scan(self, account_id: str, scan_id: str) -> StoredScan | None:
         """Deletes one scan and gives it back, so its photo can go too. None if it wasn't there."""
         with self._lock:
             row = self._db.execute(
-                "DELETE FROM scans WHERE id = ? AND device_id = ? RETURNING *", (scan_id, device_id)
+                "DELETE FROM scans WHERE id = ? AND account_id = ? RETURNING *",
+                (scan_id, account_id),
             ).fetchone()
         return _row_to_scan(row) if row else None
 
@@ -411,3 +412,14 @@ class Store:
     def delete_session(self, token_hash: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+    def claim_device_scans(self, device_id: str, account_id: str) -> int:
+        """Moves the scans saved under a device id before accounts, that no account has yet,
+        to this account (ADR-0011). Answers how many moved."""
+        with self._lock:
+            moved = self._db.execute(
+                "UPDATE scans SET account_id = ?, device_id = NULL"
+                " WHERE device_id = ? AND account_id IS NULL",
+                (account_id, device_id),
+            )
+        return moved.rowcount

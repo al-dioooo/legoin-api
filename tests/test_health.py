@@ -20,14 +20,17 @@ def test_cors_allows_the_web_app(client):
         headers={
             "Origin": "https://legoin-web.vercel.app",
             "Access-Control-Request-Method": "PATCH",
-            "Access-Control-Request-Headers": "Content-Type, Legoin-Device-Id",
+            "Access-Control-Request-Headers": "Content-Type, Authorization",
         },
     )
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://legoin-web.vercel.app"
     assert "PATCH" in response.headers["access-control-allow-methods"]
-    assert "legoin-device-id" in response.headers["access-control-allow-headers"].lower()
+    allowed = response.headers["access-control-allow-headers"].lower()
+    assert "authorization" in allowed
+    assert "legoin-device-id" not in allowed
+    assert "access-control-allow-credentials" not in response.headers
 
 
 def test_cors_refuses_other_origins(client):
