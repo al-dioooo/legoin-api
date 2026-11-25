@@ -174,6 +174,27 @@ def test_photos_are_capped_near_the_web_apps_size(client):
     assert upload(client, huge_png(4096, 4097)).status_code == 413
 
 
+def test_the_photo_is_decoded_off_the_event_loop(client, monkeypatch):
+    import asyncio
+
+    from legoin_api.routes import scan_jobs
+
+    loops = []
+    read_photo = scan_jobs.read_photo
+
+    def spy(data):
+        try:
+            loops.append(asyncio.get_running_loop())
+        except RuntimeError:
+            loops.append(None)
+        return read_photo(data)
+
+    monkeypatch.setattr(scan_jobs, "read_photo", spy)
+
+    assert upload(client, encode(pieces())).status_code == 202
+    assert loops == [None]
+
+
 def test_an_unknown_job_is_not_found_and_cancelling_it_is_fine(client):
     response = client.get("/v1/scan-jobs/job_nope", headers=HEADERS)
 

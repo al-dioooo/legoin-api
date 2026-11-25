@@ -3,6 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from legoin_api.deps import DeviceId, PhotoUrlsDep, StoreDep
@@ -64,7 +65,8 @@ async def _read_upload(request: Request) -> bytes:
 
 @router.post("/scan-jobs", status_code=202, openapi_extra=UPLOAD_SCHEMA)
 async def create_scan_job(request: Request, device: DeviceId, jobs: JobsDep) -> RunningJob:
-    image = read_photo(await _read_upload(request))
+    # Decoding takes a while for a large photo, so it runs off the event loop.
+    image = await run_in_threadpool(read_photo, await _read_upload(request))
     job = jobs.submit(device, image)
     return RunningJob(id=job.id, stage=job.stage)
 
