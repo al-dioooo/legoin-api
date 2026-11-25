@@ -196,6 +196,79 @@ def test_a_much_larger_body_is_refused_before_it_is_read(client):
     assert response.status_code == 413
 
 
+def multipart(size: int, chunk: int = 64 * 1024):
+    """A multipart body holding a `size`-byte photo part, in chunks, and how much was read."""
+    read = [0]
+
+    def chunks():
+        parts = [
+            b'--x\r\nContent-Disposition: form-data; name="photo"; filename="p.png"\r\n'
+            b"Content-Type: image/png\r\n\r\n",
+            *(b"\xff" * min(chunk, size - start) for start in range(0, size, chunk)),
+            b"\r\n--x--\r\n",
+        ]
+        for part in parts:
+            read[0] += len(part)
+            yield part
+
+    return chunks, read
+
+
+def test_a_chunked_upload_with_no_length_is_still_limited_to_10_mb(client):
+    chunks, _ = multipart(30 * 1024 * 1024)
+    headers = HEADERS | {"Content-Type": "multipart/form-data; boundary=x"}
+
+    response = client.post("/v1/scan-jobs", headers=headers, content=chunks())
+
+    assert response.request.headers.get("transfer-encoding") == "chunked"
+    assert "content-length" not in response.request.headers
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "photo_too_large"
+
+
+def test_a_chunked_upload_is_refused_as_it_streams_not_after(client):
+    # TestClient reads a request body whole, so this drives the app's ASGI interface itself.
+    import asyncio
+
+    chunks, read = multipart(30 * 1024 * 1024)
+    stream = chunks()
+    sent = []
+
+    async def receive():
+        part = next(stream, None)
+        if part is None:
+            return {"type": "http.request", "body": b"", "more_body": False}
+        return {"type": "http.request", "body": part, "more_body": True}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/v1/scan-jobs",
+        "raw_path": b"/v1/scan-jobs",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"legoin-device-id", DEVICE.encode()),
+            (b"content-type", b"multipart/form-data; boundary=x"),
+            (b"transfer-encoding", b"chunked"),
+        ],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "state": {},
+    }
+    asyncio.run(client.app(scope, receive, send))
+
+    assert sent[0]["status"] == 413
+    assert read[0] < MAX_PHOTO_BYTES + 256 * 1024
+
+
 def test_a_tiny_png_with_huge_dimensions_is_refused_without_decoding(client, monkeypatch):
     # The review's case: a 191 KB PNG of 7745 × 7745 px stalled the server for 0.8 s and took
     # 458 MiB. It's refused from its header, before a single pixel is decoded.
