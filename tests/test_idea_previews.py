@@ -244,6 +244,11 @@ def test_new_ideas_cancel_the_old_sets_previews(make, example):
         time.sleep(0.01)
 
     second = ask(client)
+    # The ask stops the running preview; release the others only once it has stopped, or the
+    # held one may see the release first and finish.
+    deadline = time.monotonic() + 5
+    while not runner.stopped and time.monotonic() < deadline:
+        time.sleep(0.01)
     runner.release.set()
     until(client, lambda items: all(i["previewStatus"] == "ready" for i in items))
 
