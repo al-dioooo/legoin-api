@@ -48,21 +48,22 @@ TEMPLATES: list[dict] = [
         },
         "steps": {
             "en": [
-                "Lay the black 2×4 plate as the chassis.",
-                "Stack two white 2×4 bricks at the back as the cargo box.",
-                "Put the blue 2×3 brick at the front as the cab and four black rounds underneath as wheels.",
+                "Lay the black 2×4 plate and the black 2×2 plate end to end as the chassis.",
+                "Put the blue 2×2 brick on the front as the cab, then stack two white 2×4 bricks behind it, across both plates, as the cargo box.",
+                "Turn it over and press four black 1×1 rounds under the front and the back as wheels.",
             ],
             "id": [
-                "Letakkan plate 2×4 hitam sebagai sasis.",
-                "Tumpuk dua brick 2×4 putih di belakang sebagai bak.",
-                "Pasang brick 2×3 biru di depan sebagai kabin dan empat round hitam di bawah sebagai roda.",
+                "Letakkan plate 2×4 hitam dan plate 2×2 hitam berjajar sebagai sasis.",
+                "Pasang brick 2×2 biru di depan sebagai kabin, lalu tumpuk dua brick 2×4 putih di belakangnya, menyambung kedua plate, sebagai bak.",
+                "Balik truknya, lalu pasang empat round 1×1 hitam di bawah bagian depan dan belakang sebagai roda.",
             ],
         },
         "requires": [
-            {"part": "plate-2x4", "color": "black", "quantity": 1},
-            {"part": "brick-2x4", "color": "white", "quantity": 2},
-            {"part": "brick-2x3", "color": "blue", "quantity": 1},
             {"part": "round-1x1", "color": "black", "quantity": 4},
+            {"part": "brick-2x4", "color": "white", "quantity": 2},
+            {"part": "brick-2x2", "color": "blue", "quantity": 1},
+            {"part": "plate-2x2", "color": "black", "quantity": 1},
+            {"part": "plate-2x4", "color": "black", "quantity": 1},
         ],
     },
     {
@@ -130,12 +131,12 @@ TEMPLATES: list[dict] = [
             "en": [
                 "Lay the green 2×4 brick down as the body.",
                 "Put the white 2×2 brick at the back as the cab.",
-                "Add four black 1×1 bricks at the corners as wheels.",
+                "Press four black 1×1 bricks under its corners as wheels.",
             ],
             "id": [
                 "Letakkan brick 2×4 hijau sebagai badan.",
                 "Pasang brick 2×2 putih di belakang sebagai kabin.",
-                "Tambahkan empat brick 1×1 hitam di sudut sebagai roda.",
+                "Pasang empat brick 1×1 hitam di bawah keempat sudutnya sebagai roda.",
             ],
         },
         "requires": [
@@ -156,12 +157,12 @@ TEMPLATES: list[dict] = [
         "steps": {
             "en": [
                 "Stack three white 2×2 bricks as the body.",
-                "Put two red 1×2 bricks at the bottom as fins.",
+                "Press the two red 1×2 bricks under the body at opposite corners, each sticking out one stud to the side, as fins.",
                 "Top it with the red 2×2 slope as the nose.",
             ],
             "id": [
                 "Tumpuk tiga brick 2×2 putih sebagai badan.",
-                "Pasang dua brick 1×2 merah di bawah sebagai sirip.",
+                "Pasang dua brick 1×2 merah di bawah badan, di sudut yang berseberangan, masing-masing menjorok satu stud ke samping, sebagai sirip.",
                 "Tutup dengan slope 2×2 merah sebagai hidung roket.",
             ],
         },
@@ -237,20 +238,21 @@ TEMPLATES: list[dict] = [
         },
         "steps": {
             "en": [
-                "Start with an orange 2×2 plate as the feet.",
-                "Stack two black 2×2 bricks on top as the body.",
-                "Add the white 1×1 brick on the front as the belly and the yellow round as the beak.",
+                "Start with the orange 2×2 plate as the feet.",
+                "Put the white 1×2 brick on its front row as the belly, and the black 1×2 brick behind it as the back.",
+                "Put the black 2×2 brick on the black brick, sticking out one stud at the back, as the head, and the yellow 1×1 round on the belly in front of it as the beak.",
             ],
             "id": [
                 "Mulai dengan plate 2×2 oranye sebagai kaki.",
-                "Tumpuk dua brick 2×2 hitam di atasnya sebagai badan.",
-                "Pasang brick 1×1 putih di depan sebagai perut dan round kuning sebagai paruh.",
+                "Pasang brick 1×2 putih di baris depannya sebagai perut, lalu brick 1×2 hitam di belakangnya sebagai punggung.",
+                "Pasang brick 2×2 hitam di atas brick hitam, menjorok satu stud ke belakang, sebagai kepala, lalu round 1×1 kuning di atas perut, di depan kepala, sebagai paruh.",
             ],
         },
         "requires": [
+            {"part": "brick-1x2", "color": "black", "quantity": 1},
+            {"part": "brick-1x2", "color": "white", "quantity": 1},
+            {"part": "brick-2x2", "color": "black", "quantity": 1},
             {"part": "plate-2x2", "color": "orange", "quantity": 1},
-            {"part": "brick-2x2", "color": "black", "quantity": 2},
-            {"part": "brick-1x1", "color": "white", "quantity": 1},
             {"part": "round-1x1", "color": "yellow", "quantity": 1},
         ],
     },
@@ -293,13 +295,13 @@ TEMPLATES: list[dict] = [
         "steps": {
             "en": [
                 "Use the red 2×4 brick as the body.",
-                "Put a red 1×2 brick on each side as claws.",
-                "Add two black rounds on top as eyes.",
+                "Put a red 1×2 brick on each front corner, sticking out one stud to the side, as claws.",
+                "Add the two black 1×1 rounds between the claws as eyes.",
             ],
             "id": [
                 "Pakai brick 2×4 merah sebagai badan.",
-                "Pasang brick 1×2 merah di tiap sisi sebagai capit.",
-                "Tambahkan dua round hitam di atas sebagai mata.",
+                "Pasang brick 1×2 merah di tiap sudut depan, menjorok satu stud ke samping, sebagai capit.",
+                "Tambahkan dua round 1×1 hitam di antara capit sebagai mata.",
             ],
         },
         "requires": [
@@ -320,13 +322,13 @@ TEMPLATES: list[dict] = [
         "steps": {
             "en": [
                 "Stand the brown 2×4 brick on four brown 1×1 bricks as the body and legs.",
-                "Add the brown 2×2 brick at the front as the head, with a black round as the nose.",
-                "Hang two black 1×2 plates on the head as ears.",
+                "Add the brown 2×2 brick on the front, sticking out one stud, as the head.",
+                "Put the black 1×1 round on the front of the head as the nose, and the two black 1×2 plates on its back row, sticking out to the sides, as ears.",
             ],
             "id": [
                 "Berdirikan brick 2×4 cokelat di atas empat brick 1×1 cokelat sebagai badan dan kaki.",
-                "Tambahkan brick 2×2 cokelat di depan sebagai kepala, dengan round hitam sebagai hidung.",
-                "Pasang dua plate 1×2 hitam di kepala sebagai telinga.",
+                "Pasang brick 2×2 cokelat di bagian depan, menjorok satu stud, sebagai kepala.",
+                "Taruh round 1×1 hitam di depan kepala sebagai hidung, lalu dua plate 1×2 hitam di baris belakangnya, menjorok ke samping, sebagai telinga.",
             ],
         },
         "requires": [

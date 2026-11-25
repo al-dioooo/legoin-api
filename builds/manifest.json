@@ -2,6 +2,245 @@
   "about": "Written by scripts/builds.py with bricklayer-sdk 0.1.0 and brickwright 0.1.0. Don't edit by hand.",
   "builds": [
     {
+      "id": "crab",
+      "theme": "animals",
+      "difficulty": "medium",
+      "title": {
+        "en": "Crab",
+        "id": "Kepiting"
+      },
+      "summary": {
+        "en": "A red body with two claws and black eyes.",
+        "id": "Badan merah dengan dua capit dan mata hitam."
+      },
+      "steps": {
+        "en": [
+          "Use the red 2×4 brick as the body.",
+          "Put a red 1×2 brick on each front corner, sticking out one stud to the side, as claws.",
+          "Add the two black 1×1 rounds between the claws as eyes."
+        ],
+        "id": [
+          "Pakai brick 2×4 merah sebagai badan.",
+          "Pasang brick 1×2 merah di tiap sudut depan, menjorok satu stud ke samping, sebagai capit.",
+          "Tambahkan dua round 1×1 hitam di antara capit sebagai mata."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x2",
+          "color": "red",
+          "quantity": 2
+        },
+        {
+          "part": "round-1x1",
+          "color": "black",
+          "quantity": 2
+        },
+        {
+          "part": "brick-2x4",
+          "color": "red",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "crab/build.py",
+          "sha256": "4a740d94eac707f7f1b3d6f780159941a923ba9aec67d82edaa404b375498f69"
+        },
+        "model": {
+          "path": "crab/model.ldr",
+          "sha256": "56430b1aef20d9e44a3bebbf3e57c7b310e9176ed699b9ed08c2808e3b72fac0"
+        },
+        "preview": {
+          "path": "crab/preview.webp",
+          "sha256": "74561fe47a5235d71dad5b47fb9400b73a4d5fc9127c22456e6dc7c2c3bd448b"
+        }
+      }
+    },
+    {
+      "id": "delivery-truck",
+      "theme": "vehicles",
+      "difficulty": "medium",
+      "title": {
+        "en": "Delivery truck",
+        "id": "Truk pengantar"
+      },
+      "summary": {
+        "en": "Blue cab, white cargo box, round wheels.",
+        "id": "Kabin biru, bak putih, roda bulat."
+      },
+      "steps": {
+        "en": [
+          "Lay the black 2×4 plate and the black 2×2 plate end to end as the chassis.",
+          "Put the blue 2×2 brick on the front as the cab, then stack two white 2×4 bricks behind it, across both plates, as the cargo box.",
+          "Turn it over and press four black 1×1 rounds under the front and the back as wheels."
+        ],
+        "id": [
+          "Letakkan plate 2×4 hitam dan plate 2×2 hitam berjajar sebagai sasis.",
+          "Pasang brick 2×2 biru di depan sebagai kabin, lalu tumpuk dua brick 2×4 putih di belakangnya, menyambung kedua plate, sebagai bak.",
+          "Balik truknya, lalu pasang empat round 1×1 hitam di bawah bagian depan dan belakang sebagai roda."
+        ]
+      },
+      "parts": [
+        {
+          "part": "round-1x1",
+          "color": "black",
+          "quantity": 4
+        },
+        {
+          "part": "brick-2x4",
+          "color": "white",
+          "quantity": 2
+        },
+        {
+          "part": "brick-2x2",
+          "color": "blue",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x2",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x4",
+          "color": "black",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "delivery-truck/build.py",
+          "sha256": "94df19697f4d27c0ad0f41fa3ef975c0277063b6c0598020d2ecc113de1338fd"
+        },
+        "model": {
+          "path": "delivery-truck/model.ldr",
+          "sha256": "346801085e5357a6d6fa64cf407c8ec457a3b5d244de1f79d8ec759b9738675a"
+        },
+        "preview": {
+          "path": "delivery-truck/preview.webp",
+          "sha256": "c3724891d98a38e47f874471d6ddf671acf4ef4bbc610ae0868c70df3f4b8761"
+        }
+      }
+    },
+    {
+      "id": "go-kart",
+      "theme": "vehicles",
+      "difficulty": "easy",
+      "title": {
+        "en": "Go-kart",
+        "id": "Gokar"
+      },
+      "summary": {
+        "en": "A low kart with a blue seat.",
+        "id": "Gokar rendah dengan kursi biru."
+      },
+      "steps": {
+        "en": [
+          "Use the black 2×4 plate as the chassis.",
+          "Put the blue 2×3 brick at the back as the seat.",
+          "Add the orange 1×2 brick at the front and the yellow round as the steering wheel."
+        ],
+        "id": [
+          "Pakai plate 2×4 hitam sebagai sasis.",
+          "Pasang brick 2×3 biru di belakang sebagai kursi.",
+          "Tambahkan brick 1×2 oranye di depan dan round kuning sebagai setir."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x2",
+          "color": "orange",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x3",
+          "color": "blue",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x4",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "go-kart/build.py",
+          "sha256": "a66497652d400e5356a14cd96ab30c5247077f1d24f043718d09d0c8fb9fe4c9"
+        },
+        "model": {
+          "path": "go-kart/model.ldr",
+          "sha256": "a159648bb2e3f3602920721a867a8cd5401fc1ed79508b8128d0ae92d9d78dbe"
+        },
+        "preview": {
+          "path": "go-kart/preview.webp",
+          "sha256": "2715381c3af639bfeb5bd0c0e032405d73c62fe15d66b1e204a8e2fc4cc37422"
+        }
+      }
+    },
+    {
+      "id": "little-boat",
+      "theme": "vehicles",
+      "difficulty": "easy",
+      "title": {
+        "en": "Little boat",
+        "id": "Perahu kecil"
+      },
+      "summary": {
+        "en": "Brown hull, white cabin, a funnel on top.",
+        "id": "Lambung cokelat, kabin putih, cerobong di atas."
+      },
+      "steps": {
+        "en": [
+          "Use the brown 1×3 brick as the hull.",
+          "Put the white 1×1 brick on top as the cabin.",
+          "Finish with a yellow round on the cabin as the funnel."
+        ],
+        "id": [
+          "Pakai brick 1×3 cokelat sebagai lambung.",
+          "Pasang brick 1×1 putih di atasnya sebagai kabin.",
+          "Tutup dengan round kuning di atas kabin sebagai cerobong."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "white",
+          "quantity": 1
+        },
+        {
+          "part": "brick-1x3",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "little-boat/build.py",
+          "sha256": "977140a8d6f44a6fb299ddd304ff6852c90e474b84487c4b58d1f018587a51e7"
+        },
+        "model": {
+          "path": "little-boat/model.ldr",
+          "sha256": "9b2528211fec473e940a59cc40834d96129ca990af11c1e13321c8331a236214"
+        },
+        "preview": {
+          "path": "little-boat/preview.webp",
+          "sha256": "3e7cc3855449a36f0c80b0312e055650bb9bafe56ea82aceb9d979c14c7b1c44"
+        }
+      }
+    },
+    {
       "id": "little-house",
       "theme": "buildings",
       "difficulty": "easy",
@@ -61,6 +300,138 @@
         "preview": {
           "path": "little-house/preview.webp",
           "sha256": "0ca9fe50288944bca2ee6d868147daf585fa95002164fe983cb4a4942c067d6b"
+        }
+      }
+    },
+    {
+      "id": "penguin",
+      "theme": "animals",
+      "difficulty": "medium",
+      "title": {
+        "en": "Penguin",
+        "id": "Penguin"
+      },
+      "summary": {
+        "en": "Black body, white belly, orange feet.",
+        "id": "Badan hitam, perut putih, kaki oranye."
+      },
+      "steps": {
+        "en": [
+          "Start with the orange 2×2 plate as the feet.",
+          "Put the white 1×2 brick on its front row as the belly, and the black 1×2 brick behind it as the back.",
+          "Put the black 2×2 brick on the black brick, sticking out one stud at the back, as the head, and the yellow 1×1 round on the belly in front of it as the beak."
+        ],
+        "id": [
+          "Mulai dengan plate 2×2 oranye sebagai kaki.",
+          "Pasang brick 1×2 putih di baris depannya sebagai perut, lalu brick 1×2 hitam di belakangnya sebagai punggung.",
+          "Pasang brick 2×2 hitam di atas brick hitam, menjorok satu stud ke belakang, sebagai kepala, lalu round 1×1 kuning di atas perut, di depan kepala, sebagai paruh."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x2",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "brick-1x2",
+          "color": "white",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x2",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x2",
+          "color": "orange",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "penguin/build.py",
+          "sha256": "cab636a8faa78ec1d434ce360651180e71011813a7f21d763b4e90002b6db4de"
+        },
+        "model": {
+          "path": "penguin/model.ldr",
+          "sha256": "6539a5ffc7e9df1a0ba9e208a07016ceb0ec87a031bc297a3b8b41433e43a741"
+        },
+        "preview": {
+          "path": "penguin/preview.webp",
+          "sha256": "0adc3c5caed5f576fcb52da236f9d95eaf897cb3e3821572a993ff0921da64e9"
+        }
+      }
+    },
+    {
+      "id": "puppy",
+      "theme": "animals",
+      "difficulty": "hard",
+      "title": {
+        "en": "Puppy",
+        "id": "Anak anjing"
+      },
+      "summary": {
+        "en": "Brown body, black ears and a round nose.",
+        "id": "Badan cokelat, telinga hitam, dan hidung bulat."
+      },
+      "steps": {
+        "en": [
+          "Stand the brown 2×4 brick on four brown 1×1 bricks as the body and legs.",
+          "Add the brown 2×2 brick on the front, sticking out one stud, as the head.",
+          "Put the black 1×1 round on the front of the head as the nose, and the two black 1×2 plates on its back row, sticking out to the sides, as ears."
+        ],
+        "id": [
+          "Berdirikan brick 2×4 cokelat di atas empat brick 1×1 cokelat sebagai badan dan kaki.",
+          "Pasang brick 2×2 cokelat di bagian depan, menjorok satu stud, sebagai kepala.",
+          "Taruh round 1×1 hitam di depan kepala sebagai hidung, lalu dua plate 1×2 hitam di baris belakangnya, menjorok ke samping, sebagai telinga."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "brown",
+          "quantity": 4
+        },
+        {
+          "part": "plate-1x2",
+          "color": "black",
+          "quantity": 2
+        },
+        {
+          "part": "brick-2x2",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x4",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "black",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "puppy/build.py",
+          "sha256": "24517e65a86422eac5083c9f7d26267bce8f962662e8c207f839bfc08b5eff0d"
+        },
+        "model": {
+          "path": "puppy/model.ldr",
+          "sha256": "3af04bfc6e99bf52597e870538718a6391e488e7a47f19b3abef612210f4bbd8"
+        },
+        "preview": {
+          "path": "puppy/preview.webp",
+          "sha256": "a5001bebdc7f16f768b29c0eb74fbd6ee59fb32d15ab73cb91a011d7c710284f"
         }
       }
     },
@@ -131,6 +502,62 @@
       }
     },
     {
+      "id": "rocket",
+      "theme": "vehicles",
+      "difficulty": "hard",
+      "title": {
+        "en": "Rocket",
+        "id": "Roket"
+      },
+      "summary": {
+        "en": "A white tower with red fins and a nose cone.",
+        "id": "Menara putih dengan sirip merah dan hidung lancip."
+      },
+      "steps": {
+        "en": [
+          "Stack three white 2×2 bricks as the body.",
+          "Press the two red 1×2 bricks under the body at opposite corners, each sticking out one stud to the side, as fins.",
+          "Top it with the red 2×2 slope as the nose."
+        ],
+        "id": [
+          "Tumpuk tiga brick 2×2 putih sebagai badan.",
+          "Pasang dua brick 1×2 merah di bawah badan, di sudut yang berseberangan, masing-masing menjorok satu stud ke samping, sebagai sirip.",
+          "Tutup dengan slope 2×2 merah sebagai hidung roket."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-2x2",
+          "color": "white",
+          "quantity": 3
+        },
+        {
+          "part": "brick-1x2",
+          "color": "red",
+          "quantity": 2
+        },
+        {
+          "part": "slope-2x2",
+          "color": "red",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "rocket/build.py",
+          "sha256": "b2e734aab9b8333e9975c18a2c020f923bea728b20294c4108fc3be8cf066de9"
+        },
+        "model": {
+          "path": "rocket/model.ldr",
+          "sha256": "de4e5c925f048f35ce5224f0bf235074bb4c41c0d8bb7f901780bf3e9df6228e"
+        },
+        "preview": {
+          "path": "rocket/preview.webp",
+          "sha256": "c4114306c6d782eb372ddd9a1d941011e02966079daa8f363a37043236a0f2b7"
+        }
+      }
+    },
+    {
       "id": "rubber-duck",
       "theme": "animals",
       "difficulty": "easy",
@@ -188,6 +615,174 @@
         "preview": {
           "path": "rubber-duck/preview.webp",
           "sha256": "267341ecbdcc152843b17eef76addedb93bb0ad57770fd81888a86bee6442fc8"
+        }
+      }
+    },
+    {
+      "id": "snail",
+      "theme": "animals",
+      "difficulty": "easy",
+      "title": {
+        "en": "Snail",
+        "id": "Siput"
+      },
+      "summary": {
+        "en": "A dark gray shell on a brown body.",
+        "id": "Cangkang abu-abu gelap di atas badan cokelat."
+      },
+      "steps": {
+        "en": [
+          "Lay the brown 1×3 brick down as the body.",
+          "Put the dark gray 2×2 brick on the back half as the shell.",
+          "Add the yellow round at the front as the eye."
+        ],
+        "id": [
+          "Letakkan brick 1×3 cokelat sebagai badan.",
+          "Pasang brick 2×2 abu-abu gelap di setengah belakang sebagai cangkang.",
+          "Tambahkan round kuning di depan sebagai mata."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x3",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x2",
+          "color": "dark-gray",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "snail/build.py",
+          "sha256": "2eef3a79381b12f907fd2c9636c5d607259727127405ede8491159a2b549fe81"
+        },
+        "model": {
+          "path": "snail/model.ldr",
+          "sha256": "8b10bd9d530e0bb6fca85636cf161ea40926e89c106f5ea2f8797d525ecdae28"
+        },
+        "preview": {
+          "path": "snail/preview.webp",
+          "sha256": "2a2047fe464110d1648c2ad9d11e903dc0b071a326ae0d71d774176b48a8b46b"
+        }
+      }
+    },
+    {
+      "id": "tractor",
+      "theme": "vehicles",
+      "difficulty": "medium",
+      "title": {
+        "en": "Tractor",
+        "id": "Traktor"
+      },
+      "summary": {
+        "en": "Green body, white cab, black wheels.",
+        "id": "Badan hijau, kabin putih, roda hitam."
+      },
+      "steps": {
+        "en": [
+          "Lay the green 2×4 brick down as the body.",
+          "Put the white 2×2 brick at the back as the cab.",
+          "Press four black 1×1 bricks under its corners as wheels."
+        ],
+        "id": [
+          "Letakkan brick 2×4 hijau sebagai badan.",
+          "Pasang brick 2×2 putih di belakang sebagai kabin.",
+          "Pasang empat brick 1×1 hitam di bawah keempat sudutnya sebagai roda."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "black",
+          "quantity": 4
+        },
+        {
+          "part": "brick-2x2",
+          "color": "white",
+          "quantity": 1
+        },
+        {
+          "part": "brick-2x4",
+          "color": "green",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "tractor/build.py",
+          "sha256": "95d9a1eabfda8c3937b79267d53416e61370a9136f05bb6c9b975c3895426cab"
+        },
+        "model": {
+          "path": "tractor/model.ldr",
+          "sha256": "fdceb213f2dcb33f189a0a3138e18d9814311c50d33690028e57550f3d9f75a4"
+        },
+        "preview": {
+          "path": "tractor/preview.webp",
+          "sha256": "6504aa658f87bda380ac258a455947bcee729f01d759bb851d6750608dc1663f"
+        }
+      }
+    },
+    {
+      "id": "turtle",
+      "theme": "animals",
+      "difficulty": "easy",
+      "title": {
+        "en": "Turtle",
+        "id": "Kura-kura"
+      },
+      "summary": {
+        "en": "A green slope shell on a flat base.",
+        "id": "Tempurung slope hijau di atas alas datar."
+      },
+      "steps": {
+        "en": [
+          "Lay a green 2×4 plate as the base.",
+          "Put the green 2×2 slope in the middle as the shell.",
+          "Add a green 1×1 brick at the front as the head."
+        ],
+        "id": [
+          "Letakkan plate 2×4 hijau sebagai alas.",
+          "Pasang slope 2×2 hijau di tengah sebagai tempurung.",
+          "Tambahkan brick 1×1 hijau di depan sebagai kepala."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "green",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x4",
+          "color": "green",
+          "quantity": 1
+        },
+        {
+          "part": "slope-2x2",
+          "color": "green",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "turtle/build.py",
+          "sha256": "9e2600cabef96448364c17d99cbe1f0c1204056683c179be74d9607bdc733bb8"
+        },
+        "model": {
+          "path": "turtle/model.ldr",
+          "sha256": "364484741e34a7f8af6542d39d7602f71cc4cb91a4d11e8530d1ba94a76a3d06"
+        },
+        "preview": {
+          "path": "turtle/preview.webp",
+          "sha256": "f8acddfa0c40f7b498bfec8a0ae4dc6ba097c9a2fdcdb75c1ae034be3799b42f"
         }
       }
     }
