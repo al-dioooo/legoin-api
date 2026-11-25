@@ -1,0 +1,10 @@
+{
+  "theme": "vehicles",
+  "locale": "en",
+  "items": [],
+  "building": [
+    { "id": "idea_b7q2", "theme": "vehicles" },
+    { "id": "idea_c3m8", "theme": "vehicles" },
+    { "id": "idea_d9x4", "theme": "vehicles" }
+  ]
+}
