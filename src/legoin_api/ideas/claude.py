@@ -7,6 +7,9 @@ One request for ideas is a short conversation:
    at most `MAX_TOOL_ROUNDS` rounds; the last request then offers no tools.
 2. Each build is checked: its slot's theme, a title, a summary, steps, and only catalogue
    parts and colors with quantities of 1 or more. Builds that fail get one repair request.
+   A build Claude picked from the library (ADR-0010) by its `buildId` takes the library
+   build's own text, steps and parts, which carry its picture; it only has to be in the
+   slot's theme, unseen and not picked twice.
 3. Slots still empty are filled from the templates.
 
 A timeout, an API error, a refusal, a cut-off answer or output that isn't the ideas JSON
@@ -26,6 +29,7 @@ from dataclasses import dataclass, field
 import anthropic
 from pydantic import BaseModel, ValidationError
 
+from legoin_api.builds import BuildLibrary
 from legoin_api.catalogue import COLOR_IDS, PART_IDS
 from legoin_api.ideas.generator import (
     CEK_INVENTORI_TOOL,
@@ -35,7 +39,7 @@ from legoin_api.ideas.generator import (
     TemplateIdeaGenerator,
     run_cek_inventori_tool,
 )
-from legoin_api.ideas.prompt import IDEAS_SCHEMA, SYSTEM_PROMPT, repair_prompt, user_prompt
+from legoin_api.ideas.prompt import ideas_schema, repair_prompt, system_prompt, user_prompt
 from legoin_api.inventory import merge
 from legoin_api.schemas import IdeaTheme, PartCount
 
@@ -66,6 +70,7 @@ class ClaudePart(BaseModel):
 
 
 class ClaudeIdea(BaseModel):
+    buildId: str = ""  # the answer's own camelCase key
     theme: str
     difficulty: str
     title: str
@@ -101,6 +106,21 @@ class Usage:
         self.cache_read_tokens += usage.cache_read_input_tokens or 0
         self.cache_write_tokens += usage.cache_creation_input_tokens or 0
         self.models.add(response.model)
+
+
+def library_problems(
+    idea: ClaudeIdea, theme: IdeaTheme, library: BuildLibrary, seen: set[str]
+) -> list[str]:
+    """Why a library build Claude picked can't be used in its slot; empty if it can. Its
+    text and parts come from the library, so only the pick itself is checked."""
+    build = library.get(idea.buildId)
+    if build is None:
+        return [f"there's no library build {idea.buildId!r}"]
+    if build.theme != theme:
+        return [f"library build {build.id} is {build.theme}, and this slot is {theme}"]
+    if build.key in seen:
+        return [f"the person has already seen library build {build.id}, or it's used twice"]
+    return []
 
 
 def problems(idea: ClaudeIdea, theme: IdeaTheme) -> list[str]:
@@ -161,6 +181,7 @@ class AnthropicIdeaGenerator:
         effort: str,
         budget_s: float,
         templates: IdeaGenerator | None = None,
+        library: BuildLibrary | None = None,
     ):
         self.client = client
         self.model = model
@@ -168,6 +189,10 @@ class AnthropicIdeaGenerator:
         self.budget_s = budget_s
         """How long Claude may take in all, leaving the templates time within the deadline."""
         self.templates = templates or TemplateIdeaGenerator()
+        self.library = library or BuildLibrary.empty()
+        # Built once, so every request sends the same bytes and the cache hits.
+        self.system = system_prompt(self.library)
+        self.schema = ideas_schema(build.id for build in self.library)
 
     async def aclose(self) -> None:
         await self.client.close()
@@ -188,9 +213,10 @@ class AnthropicIdeaGenerator:
         except Unusable as error:
             return await self._from_templates(request, str(error))
         log.info(
-            "Claude wrote %d ideas in %.1f s: %d requests, %s, %d input, %d cache read, "
-            "%d cache write, %d output tokens",
+            "Claude wrote %d ideas (%d from the library) in %.1f s: %d requests, %s, "
+            "%d input, %d cache read, %d cache write, %d output tokens",
             sum(idea is not None for idea in ideas),
+            sum(idea is not None and idea.build_id is not None for idea in ideas),
             time.perf_counter() - started,
             usage.requests,
             "/".join(sorted(usage.models)),
@@ -222,31 +248,43 @@ class AnthropicIdeaGenerator:
     async def _write(self, request: IdeaRequest, usage: Usage) -> list[ProposedIdea | None]:
         messages: list[dict] = [{"role": "user", "content": user_prompt(request)}]
         answer = await self._converse(messages, request, usage, tool_rounds=MAX_TOOL_ROUNDS)
-        ideas, found = self._check(answer, request.themes)
+        ideas, found = self._check(answer, request)
         if found:
             log.info("Asking Claude to repair builds %s: %s", sorted(found), found)
             messages.append({"role": "user", "content": repair_prompt(found)})
             answer = await self._converse(messages, request, usage, tool_rounds=0)
-            repaired, _ = self._check(answer, request.themes)
+            repaired, _ = self._check(answer, request)
             for slot in found:
                 ideas[slot] = repaired[slot]
         return ideas
 
     def _check(
-        self, answer: ClaudeIdeas, themes: list[IdeaTheme]
+        self, answer: ClaudeIdeas, request: IdeaRequest
     ) -> tuple[list[ProposedIdea | None], dict[int, list[str]]]:
         ideas: list[ProposedIdea | None] = []
         found: dict[int, list[str]] = {}
-        for slot, theme in enumerate(themes):
+        # Library builds already seen, then those picked for earlier slots.
+        seen = {idea.key for idea in request.excluded}
+        for slot, theme in enumerate(request.themes):
             if slot >= len(answer.ideas):
                 ideas.append(None)
                 found[slot] = ["it's missing from the answer"]
                 continue
-            if wrong := problems(answer.ideas[slot], theme):
+            idea = answer.ideas[slot]
+            if idea.buildId:
+                wrong = library_problems(idea, theme, self.library, seen)
+            else:
+                wrong = problems(idea, theme)
+            if wrong:
                 ideas.append(None)
                 found[slot] = wrong
+            elif idea.buildId:
+                build = self.library.get(idea.buildId)
+                assert build is not None
+                seen.add(build.key)
+                ideas.append(build.propose(request.locale))
             else:
-                ideas.append(to_proposal(answer.ideas[slot], theme))
+                ideas.append(to_proposal(idea, theme))
         return ideas, found
 
     async def _converse(
@@ -284,9 +322,7 @@ class AnthropicIdeaGenerator:
             model=self.model,
             max_tokens=MAX_TOKENS,
             # The stable part, cached; tools render before it and never change either.
-            system=[
-                {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
-            ],
+            system=[{"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}}],
             messages=messages,
             tools=[CEK_INVENTORI],
             # Forced tool use is refused on Sonnet 5.5 and Opus 5.5, so Claude decides; the last
@@ -295,14 +331,18 @@ class AnthropicIdeaGenerator:
             thinking={"type": "adaptive"},
             output_config={
                 "effort": self.effort,
-                "format": {"type": "json_schema", "schema": IDEAS_SCHEMA},
+                "format": {"type": "json_schema", "schema": self.schema},
             },
             betas=[FALLBACK_BETA],
             fallbacks="default",
         )
 
 
-def anthropic_generator(model: str, effort: str, budget_s: float) -> AnthropicIdeaGenerator:
+def anthropic_generator(
+    model: str, effort: str, budget_s: float, library: BuildLibrary | None = None
+) -> AnthropicIdeaGenerator:
     """The generator on a real client, which reads `ANTHROPIC_API_KEY` from the environment."""
     client = anthropic.AsyncAnthropic(timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES)
-    return AnthropicIdeaGenerator(client, model=model, effort=effort, budget_s=budget_s)
+    return AnthropicIdeaGenerator(
+        client, model=model, effort=effort, budget_s=budget_s, library=library
+    )

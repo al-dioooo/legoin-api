@@ -45,20 +45,24 @@ def load_pipeline(settings: Settings) -> Pipeline:
     return ModelPipeline(files, threads=settings.torch_threads)
 
 
-def load_idea_generator(settings: Settings) -> IdeaGenerator:
+def load_idea_generator(settings: Settings, builds: BuildLibrary) -> IdeaGenerator:
     if settings.ideas_kind is IdeasGeneratorKind.TEMPLATES:
         log.info("Writing ideas from the templates. Set ANTHROPIC_API_KEY to use Claude.")
         return TemplateIdeaGenerator()
     from legoin_api.ideas.claude import anthropic_generator
 
     log.info(
-        "Writing ideas with %s at effort %s, the templates as fallback",
+        "Writing ideas with %s at effort %s, with %d library builds, the templates as fallback",
         settings.ideas_model,
         settings.ideas_effort,
+        len(builds),
     )
     # Claude gets most of the deadline; the templates answer in what's left.
     return anthropic_generator(
-        settings.ideas_model, settings.ideas_effort, budget_s=0.8 * settings.ideas_timeout_s
+        settings.ideas_model,
+        settings.ideas_effort,
+        budget_s=0.8 * settings.ideas_timeout_s,
+        library=builds,
     )
 
 
@@ -95,7 +99,7 @@ def create_app(
             workers=settings.scan_workers,
             queue_size=settings.scan_queue_size,
         )
-        app.state.ideas = idea_generator or load_idea_generator(settings)
+        app.state.ideas = idea_generator or load_idea_generator(settings, app.state.builds)
         yield
         # The worker first, so no job writes to a closed store.
         app.state.jobs.shutdown()

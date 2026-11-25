@@ -1,12 +1,15 @@
 """What Claude is told when it writes ideas, and the shape it answers in (ADR-0009).
 
 The system prompt never changes between requests, so it's cached: the catalogue with ids and
-names in both languages, the rules and one example. Everything that changes per request, the
-inventory, themes, language and ideas already seen, comes after it in the user message.
+names in both languages, the rules, the library of checked builds (ADR-0010) and one example.
+Everything that changes per request, the inventory, themes, language and ideas already seen,
+comes after it in the user message.
 """
 
 import json
+from collections.abc import Iterable
 
+from legoin_api.builds import LibraryBuild
 from legoin_api.catalogue import COLOR_IDS, DESIGN_IDS, PART_IDS, ColorId, PartId
 from legoin_api.ideas.generator import IdeaRequest
 from legoin_api.schemas import Locale
@@ -55,35 +58,49 @@ _PART_LINE = {
     "additionalProperties": False,
 }
 
-IDEAS_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "ideas": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "theme": {"type": "string", "enum": ["vehicles", "animals", "buildings"]},
-                    "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
-                    "title": {"type": "string"},
-                    "summary": {"type": "string"},
-                    "steps": {"type": "array", "items": {"type": "string"}},
-                    "parts": {"type": "array", "items": _PART_LINE},
+
+def ideas_schema(build_ids: Iterable[str] = ()) -> dict:
+    """The answer's shape, for structured outputs. `buildId` is a library build's id, or ""
+    for a build Claude writes itself. Numeric and length limits aren't allowed there, so the
+    generator checks quantities and counts itself."""
+    return {
+        "type": "object",
+        "properties": {
+            "ideas": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "buildId": {"type": "string", "enum": ["", *build_ids]},
+                        "theme": {"type": "string", "enum": ["vehicles", "animals", "buildings"]},
+                        "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                        "title": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "steps": {"type": "array", "items": {"type": "string"}},
+                        "parts": {"type": "array", "items": _PART_LINE},
+                    },
+                    "required": [
+                        "buildId",
+                        "theme",
+                        "difficulty",
+                        "title",
+                        "summary",
+                        "steps",
+                        "parts",
+                    ],
+                    "additionalProperties": False,
                 },
-                "required": ["theme", "difficulty", "title", "summary", "steps", "parts"],
-                "additionalProperties": False,
-            },
-        }
-    },
-    "required": ["ideas"],
-    "additionalProperties": False,
-}
-"""The answer's shape, for structured outputs. Numeric and length limits aren't allowed
-there, so the generator checks quantities and counts itself."""
+            }
+        },
+        "required": ["ideas"],
+        "additionalProperties": False,
+    }
+
 
 _EXAMPLE_ANSWER = {
     "ideas": [
         {
+            "buildId": "",
             "theme": "animals",
             "difficulty": "easy",
             "title": "Bebek kuning",
@@ -118,7 +135,34 @@ def _catalogue() -> str:
     )
 
 
-SYSTEM_PROMPT = f"""\
+def _library(builds: Iterable[LibraryBuild]) -> str:
+    lines = "\n".join(
+        f"- {build.id} ({build.theme}): {build.title['en']} / {build.title['id']}: "
+        + ", ".join(f"{line.part} {line.color} ×{line.quantity}" for line in build.parts)
+        for build in builds
+    )
+    if not lines:
+        return ""
+    return f"""
+# The library
+
+These builds have been checked and have a picture the app shows. Each line is a build's id, \
+its theme, its title in English / Indonesian, and every piece it needs.
+
+{lines}
+
+When the person owns every piece of a library build in a slot's theme, or all but one or \
+two, use it for that slot, so they see its picture: set `buildId` to its id and `parts` to \
+its pieces exactly, and leave `title`, `summary` and `steps` empty, since the app shows the \
+build's own. Check it with `cek_inventori` like any other build. Use each library build at \
+most once, and not one the person has already seen. For every other build, set `buildId` \
+to "" and write it yourself.
+"""
+
+
+def system_prompt(builds: Iterable[LibraryBuild] = ()) -> str:
+    """The stable, cached part of the prompt, with the library's builds in a fixed order."""
+    return f"""\
 You write small LEGO build ideas for Legoin, an app where someone photographs their loose \
 LEGO pieces and asks what they could build with them. Each request gives the pieces they \
 have, the theme of each build wanted, and the language to write in.
@@ -147,7 +191,7 @@ part names stay in the hobby's English, color after the part: "brick 2×4 merah"
 "plate 1×2 biru". In English, write "red 2×4 brick" or "blue 1×2 plate".
 - Each build is different from the others in the answer and from every idea the person \
 has already seen.
-
+{_library(builds)}
 # Checking the pieces
 
 The `cek_inventori` tool says which of a build's pieces the person owns and which are \
@@ -171,6 +215,11 @@ Language: Indonesian (id)
 Answer:
 {json.dumps(_EXAMPLE_ANSWER, ensure_ascii=False)}
 """
+
+
+IDEAS_SCHEMA = ideas_schema()
+SYSTEM_PROMPT = system_prompt()
+"""Without a library: Claude writes every build itself."""
 
 
 def user_prompt(request: IdeaRequest) -> str:
