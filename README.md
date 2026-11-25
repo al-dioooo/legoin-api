@@ -88,7 +88,7 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_CORS_ORIGINS` | `http://localhost:3000,https://legoin-web.vercel.app` | Comma-separated origins allowed to call the API. No wildcard, so add each preview origin. |
 | `LEGOIN_PUBLIC_URL` | the URL each request came in on | The absolute base for `photo.src`, e.g. `https://api.example.com`, for a host behind a proxy |
 | `LEGOIN_SCAN_TIMEOUT_S` | `30` | A scan job still running this long after its upload fails with `timeout` |
-| `LEGOIN_SCAN_WORKERS` | `1` | Scans run at the same time; torch already uses every core |
+| `LEGOIN_SCAN_WORKERS` | `1` | Scans run at the same time; torch already uses every core. Must be `1` with the `models` pipeline, whose models aren't thread-safe. |
 | `LEGOIN_SCAN_QUEUE_SIZE` | `8` | Scans accepted and not yet finished, running ones included. Beyond it, an upload answers `503 unavailable` with `Retry-After: 5`. Each holds its decoded photo, at most 48 MiB. |
 | `LEGOIN_IDEAS_TIMEOUT_S` | `30` | A request for ideas still unanswered after this long fails with `504 timeout` |
 | `PORT` | `8000` | The port, in the image only |
