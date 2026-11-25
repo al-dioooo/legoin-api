@@ -10,7 +10,7 @@ A scan runs in three stages, as legoin-ml's release notes say:
 
 Each piece gets one confidence, the lowest of the three stages' scores. A piece under 0.6 is flagged for the person to check. No detected piece is dropped.
 
-Ideas come from an `IdeaGenerator`. Until the team picks an LLM provider, that's legoin-web's 18 idea templates in English and Indonesian. Whatever writes them, the backend runs `cek_inventori` itself, so every idea says which parts the person owns and which are missing.
+Ideas come from an `IdeaGenerator`. With `ANTHROPIC_API_KEY` set, Claude writes them (ADR-0009 in legoin-docs). Otherwise, and whenever Claude can't answer in time, they come from legoin-web's 18 idea templates in English and Indonesian. Whatever writes them, the backend runs `cek_inventori` itself, so every idea says which parts the person owns and which are missing.
 
 See [AGENTS.md](AGENTS.md) for how to contribute.
 
@@ -23,6 +23,7 @@ See [AGENTS.md](AGENTS.md) for how to contribute.
   - torch 2.15.0 and torchvision 0.29.2, as CPU wheels;
   - scikit-learn 1.9.1 and scikit-image 0.26.0;
   - headless OpenCV.
+- The [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python), for ideas written by Claude
 - [uv](https://docs.astral.sh/uv/) for Python and dependencies, [Ruff](https://docs.astral.sh/ruff/) for linting and formatting, pytest for tests
 - A CPU `Dockerfile`
 
@@ -48,18 +49,27 @@ LEGOIN_PIPELINE=models uv run uvicorn --factory legoin_api.main:create_app
 
 The first start downloads the model files, about 22 MB, from the pinned legoin-ml release into `data/models/`, and checks each one's SHA-256. Later starts check the cached files. `uv run python -m legoin_api.weights` downloads them ahead of time.
 
+**Ideas from Claude** need an Anthropic API key in the environment. Keep it in a file outside the repository, readable only by you, holding one line `ANTHROPIC_API_KEY=...`, and pass it with `--env-file`, so it never appears on a command line or in your shell history:
+
+```bash
+uv run --env-file /path/to/anthropic.env uvicorn --factory legoin_api.main:create_app
+```
+
+Without the key, ideas come from the templates. `/health` reports which is running.
+
 Then open `http://localhost:8000/health`, or the API's OpenAPI page at `http://localhost:8000/docs`. To point legoin-web at it, set `NEXT_PUBLIC_API_URL=http://localhost:8000/v1`.
 
 **Docker:**
 
 ```bash
 docker build -t legoin-api .
-docker run -p 8000:8000 -v legoin-data:/data legoin-api
+docker run -p 8000:8000 -v legoin-data:/data --env-file /path/to/anthropic.env legoin-api
 ```
 
 - The model files are downloaded and checked while the image builds, so the container starts without network access.
 - It runs the real models as a non-root user, one uvicorn process, on `$PORT` (default 8000).
 - Everything it keeps is in the `/data` volume.
+- The key is passed when the container starts, with `--env-file`. It's never in the image: `.dockerignore` leaves out `.env*`. Without it, ideas come from the templates.
 
 ## Checks
 
@@ -73,6 +83,12 @@ uv run pytest
 CI runs the same commands on every pull request, on the stand-in pipeline (`LEGOIN_PIPELINE=stub`), so it needs neither torch nor the model weights.
 
 `tests/test_model_pipeline.py` needs the real libraries, so CI skips it. It checks the crops against Ultralytics' own `save_one_box`, and the color port against the released parameters. Run it with `uv sync --extra models` first.
+
+`tests/test_claude_live.py` makes one real request to Claude. It's skipped without `ANTHROPIC_API_KEY`, so CI, which has no key, never calls the API. Every other test uses a fake client. To run it:
+
+```bash
+uv run --env-file /path/to/anthropic.env pytest tests/test_claude_live.py
+```
 
 ## Environment variables
 
@@ -90,11 +106,15 @@ All optional. `.env.example` lists them with their defaults.
 | `LEGOIN_SCAN_TIMEOUT_S` | `30` | A scan job still running this long after its upload fails with `timeout` |
 | `LEGOIN_SCAN_WORKERS` | `1` | Scans run at the same time; torch already uses every core. Must be `1` with the `models` pipeline, whose models aren't thread-safe. |
 | `LEGOIN_SCAN_QUEUE_SIZE` | `8` | Scans accepted and not yet finished, running ones included. Beyond it, an upload answers `503 unavailable` with `Retry-After: 5`. Each holds its decoded photo, at most 48 MiB. |
-| `LEGOIN_IDEAS_TIMEOUT_S` | `30` | A request for ideas still unanswered after this long fails with `504 timeout` |
+| `LEGOIN_IDEAS_TIMEOUT_S` | `30` | A request for ideas still unanswered after this long fails with `504 timeout`. Claude gets 80% of it; the templates answer after that. |
+| `ANTHROPIC_API_KEY` | unset | The Anthropic API key. Read by the SDK from the environment only, never logged. |
+| `LEGOIN_IDEAS_GENERATOR` | `anthropic` with a key, else `templates` | What writes ideas. `anthropic` without a key refuses to start. |
+| `LEGOIN_IDEAS_MODEL` | `claude-opus-5-5` | The Claude model that writes ideas |
+| `LEGOIN_IDEAS_EFFORT` | `low` | Claude's effort: `low`, `medium`, `high`, `xhigh` or `max` |
 | `LEGOIN_CONTAINER` | unset (`1` in the image) | Warns at start-up when a deployment setting is missing: today, `LEGOIN_PUBLIC_URL` |
 | `PORT` | `8000` | The port, in the image only |
 
-The service needs no keys. When an LLM provider is chosen, its key goes here and in `.env.example`, with an empty value.
+The only secret is `ANTHROPIC_API_KEY`. Never commit it, put it in an image or log it.
 
 ## The API
 
@@ -114,7 +134,7 @@ Every route needs a `Legoin-Device-Id` header, the contract's placeholder for ac
 | `POST /v1/scans/{scanId}/ideas` | Three ideas for `theme` in `locale` (`en` or `id`), avoiding `exclude` |
 | `GET /v1/scans/{scanId}/ideas/{ideaId}` | One idea from the scan's latest set, with the set |
 | `GET /v1/photos/{name}` | A scan's photo, for a plain `<img>`, with no header needed |
-| `GET /health` | `{"status": "ok", "version", "pipeline", "modelTag"?}`, for a host's health check |
+| `GET /health` | `{"status": "ok", "version", "pipeline", "modelTag"?, "ideas", "ideasModel"?}`, for a host's health check |
 
 `tests/contract/` holds the contract's own example bodies, and the tests check the API against them.
 
@@ -150,3 +170,4 @@ Nothing is deployed yet; the host is a team decision. Whatever runs the image ne
 - **HTTPS and a body limit at the proxy.** Cap request bodies at about 11 MB; the app also refuses uploads over 10 MB itself.
 - **`LEGOIN_PUBLIC_URL`** set to the public base URL, so photo URLs use it. The image logs a warning at start-up when it's unset.
 - **`LEGOIN_CORS_ORIGINS`** set to the web app's origins.
+- **`ANTHROPIC_API_KEY`** from the host's secret store or `--env-file`, for ideas from Claude. At effort `low`, a request for ideas took a median of 17 s and cost about $0.05 (ADR-0009).
