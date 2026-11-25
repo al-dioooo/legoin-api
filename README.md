@@ -159,6 +159,37 @@ To move to a new tag:
 
 Anything built on these models credits the datasets listed in [legoin-ml's README](https://github.com/al-dioooo/legoin-ml#dataset), all CC BY 4.0.
 
+## The build library
+
+`builds/` holds checked LEGO builds made with BrickLayer, one directory each (ADR-0010 in legoin-docs):
+
+- `build.py`: the build in [BrickLayer](https://github.com/AvaLovelace1/brickwright), with its theme, difficulty, title, summary and steps in English and Indonesian in `META`;
+- `model.ldr`: the build as an LDraw file;
+- `preview.webp`: an isometric picture, 640 px square, on a transparent background.
+
+`builds/manifest.json` lists every build with its parts, counted from the build itself, and each file's SHA-256. Each template has a build with the same id, text and parts. They're made offline: the service never runs BrickLayer, and neither it nor CI needs the LDraw parts library.
+
+`scripts/builds.py` writes them. It's a [uv script](https://docs.astral.sh/uv/guides/scripts/) with its own dependencies, `bricklayer-sdk` 0.1.0 and `brickwright` 0.1.0, locked in `scripts/builds.py.lock`; they're never installed with the service. For each build it:
+
+1. runs BrickWright's validation, the same as `brickwright external validate`: no collisions, nothing floating, one connected assembly;
+2. checks it's 3 to 15 pieces, all catalogue parts and colors;
+3. writes `model.ldr` and renders `preview.webp`;
+4. writes its entry in the manifest.
+
+Rendering needs the [LDraw parts library](https://library.ldraw.org/library/updates/complete.zip), unzipped outside the repository. It runs on a CPU, with no GPU, in about 2 s a build:
+
+```bash
+LDRAW_LIBRARY_PATH=/path/to/ldraw uv run --script scripts/builds.py
+```
+
+It renders only builds whose files no longer match the manifest, since renders differ by a few pixels from run to run. Name a build, or pass `--force` after changing the renderer, to render anyway. `--check` validates every build and compares it with the manifest, writing nothing.
+
+To add a build, copy a directory, edit `build.py`, run the script and look at the preview. `tests/test_builds.py` checks the manifest against the catalogue, every file against its hash and size limit, and each template against its build.
+
+The builds use BrickLayer and BrickWright (MIT): Pun et al., *BrickWright: Agentic Creation of Physically Feasible Brick Builds*, 2026, [arXiv:2610.31651](https://arxiv.org/abs/2610.31651). BrickLayer's part data derive from the [LDraw.org Parts Library](https://library.ldraw.org/) (CC BY 2.0 and 4.0), [BrickNet](https://github.com/kulits/BrickNet) (MIT) and [Rebrickable](https://rebrickable.com/downloads/). The previews are rendered from the LDraw.org Parts Library, which the `.ldr` files refer to but don't include.
+
+LEGO® is a trademark of the LEGO Group, which does not sponsor, authorize or endorse this project.
+
 ## Deployment
 
 Nothing is deployed yet; the host is a team decision. Whatever runs the image needs:
