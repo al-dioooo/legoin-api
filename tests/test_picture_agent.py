@@ -4,8 +4,10 @@ import json
 
 import pytest
 from picture_fakes import (
+    BRIEF,
     CAR,
     FINISH,
+    PIECES,
     FakeChecks,
     FakeClaude,
     FakeRenders,
@@ -17,8 +19,8 @@ from picture_fakes import (
 )
 from PIL import Image
 
-from legoin_api.picture.agent import MAX_TOKENS, PICTURE_MAX_SIDE, Caps, IdeaBrief, PictureAgent
-from legoin_api.picture.prompt import SYSTEM, TOOLS
+from legoin_api.picture.agent import MAX_TOKENS, PICTURE_MAX_SIDE, Caps, PictureAgent, difficulty_of
+from legoin_api.picture.prompt import SYSTEM, TOOLS, BuildBrief
 from legoin_api.schemas import PartCount
 
 
@@ -50,7 +52,7 @@ def results(claude, call: int) -> list[dict]:
 def test_a_build_claude_finishes_is_done_with_its_own_text():
     claude = FakeClaude(happy_script())
 
-    outcome = agent(claude).run(jpeg(), "en")
+    outcome = agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     assert (outcome.status, outcome.code, outcome.written_by) == ("done", "finished", "claude")
     assert [p.part for p in outcome.pieces] == [p["part"] for p in CAR]
@@ -65,7 +67,7 @@ def test_a_build_claude_finishes_is_done_with_its_own_text():
 
 def test_each_request_is_cached_strict_and_set_as_the_adr_says():
     claude = FakeClaude(happy_script())
-    agent(claude).run(jpeg(), "id")
+    agent(claude).run_scan(jpeg(), PIECES, BRIEF, "id")
     request = claude.calls[0]
 
     assert request["model"] == "claude-opus-5-5"
@@ -80,19 +82,22 @@ def test_each_request_is_cached_strict_and_set_as_the_adr_says():
     assert request["thinking"] == {"type": "adaptive"}
     assert request["output_config"] == {"effort": "medium"}
     assert request["fallbacks"] == "default"
-    # The person types nothing: the picture, and one line naming the language.
-    picture, line = request["messages"][0]["content"]
-    assert line == {
+    # The scan's photo and pieces, cached for the set's other builds, then what to build.
+    photo, pieces, brief = request["messages"][0]["content"]
+    assert photo["source"]["media_type"] == "image/jpeg"
+    assert pieces["cache_control"] == {"type": "ephemeral"}
+    assert pieces["text"].startswith("The person's pieces, 8 in all:\n")
+    assert "- 2 × yellow 1×1 round (`round-1x1`, `yellow`)" in pieces["text"]
+    assert brief == {
         "type": "text",
-        "text": "Design a LEGO build of the main subject of this picture. Write the title, "
-        "summary and steps in Indonesian (Bahasa Indonesia).",
+        "text": "Build a vehicle for the road, using at most 8 pieces. Write the title, summary "
+        "and steps in Indonesian (Bahasa Indonesia).",
     }
-    assert picture["source"]["media_type"] == "image/jpeg"
 
 
 def test_the_picture_is_sent_small_and_without_metadata():
     claude = FakeClaude(happy_script())
-    agent(claude).run(jpeg((3000, 2000), exif=True), "en")
+    agent(claude).run_scan(jpeg((3000, 2000), exif=True), PIECES, BRIEF, "en")
 
     data = claude.calls[0]["messages"][0]["content"][0]["source"]["data"]
     with Image.open(io.BytesIO(base64.b64decode(data))) as sent:
@@ -102,7 +107,7 @@ def test_the_picture_is_sent_small_and_without_metadata():
 
 def test_whole_turns_go_back_and_renders_come_back_as_images():
     claude = FakeClaude(happy_script())
-    agent(claude).run(jpeg(), "en")
+    agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     second = claude.calls[1]["messages"]
     assert second[1]["role"] == "assistant"
@@ -123,7 +128,7 @@ def test_finish_needs_a_render_seen_in_an_earlier_turn():
     ]
     claude = FakeClaude([finish_now, [tool("finish", FINISH, "t4")]])
 
-    outcome = agent(claude).run(jpeg(), "en")
+    outcome = agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     refused = results(claude, 1)[2]
     assert refused["is_error"] is True
@@ -140,7 +145,7 @@ def test_finish_refuses_an_invalid_build_or_missing_text():
     ]
     claude = FakeClaude(script)
 
-    outcome = agent(claude, checks=FakeChecks(bad={"p6"})).run(jpeg(), "en")
+    outcome = agent(claude, checks=FakeChecks(bad={"p6"})).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     problems = json.loads(results(claude, 2)[0]["content"])["problems"]
     assert problems == ["1 floating: p6", "it needs 2 to 8 steps"]
@@ -148,23 +153,12 @@ def test_finish_refuses_an_invalid_build_or_missing_text():
     assert [p.id for p in outcome.pieces] == ["p1", "p2", "p3", "p4", "p5"]
 
 
-def test_a_decline_ends_with_picture_refused():
+def test_a_decline_ends_with_refused():
     claude = FakeClaude([([text("")], "refusal")])
 
-    outcome = agent(claude).run(jpeg(), "en")
+    outcome = agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
-    assert (outcome.status, outcome.code) == ("failed", "picture_refused")
-
-
-@pytest.mark.parametrize(
-    ("reason", "code"), [("no_subject", "picture_unusable"), ("unsuitable", "picture_refused")]
-)
-def test_rejecting_the_picture_ends_the_job(reason, code):
-    claude = FakeClaude([[tool("reject_picture", {"reason": reason})]])
-
-    outcome = agent(claude).run(jpeg(), "en")
-
-    assert (outcome.status, outcome.code, outcome.pieces) == ("failed", code, ())
+    assert (outcome.status, outcome.code) == ("failed", "refused")
 
 
 def test_a_reply_cut_off_or_without_tools_is_told_to_go_on():
@@ -175,7 +169,7 @@ def test_a_reply_cut_off_or_without_tools_is_told_to_go_on():
     ]
     claude = FakeClaude(script)
 
-    outcome = agent(claude).run(jpeg(), "en")
+    outcome = agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     assert "smaller batches" in claude.calls[1]["messages"][-1]["content"]
     assert "call finish" in claude.calls[2]["messages"][-1]["content"]
@@ -187,11 +181,11 @@ def test_a_cap_ends_the_job_with_the_last_valid_build_and_plain_text():
     script = [[tool("place_pieces", {"pieces": CAR})], keep_going, keep_going]
     claude = FakeClaude(script)
 
-    outcome = agent(claude, caps=Caps(max_calls=3)).run(jpeg(), "id")
+    outcome = agent(claude, caps=Caps(max_calls=3)).run_scan(jpeg(), PIECES, BRIEF, "id")
 
     assert (outcome.status, outcome.code, outcome.written_by) == ("done", "max_calls", "plain")
     assert len(outcome.pieces) == 6
-    assert outcome.title == "Rakitan dari gambarmu"
+    assert outcome.title == "Rakitan dari kepinganmu"
     assert outcome.steps[0] == "Pasang 1 × plate 2×4 hitam."
     assert json.loads(results(claude, 2)[0]["content"])["note"].startswith("Almost out")
 
@@ -200,7 +194,9 @@ def test_a_cap_with_no_valid_build_fails():
     script = [[tool("place_pieces", {"pieces": CAR})], [tool("validate")]]
     claude = FakeClaude(script)
 
-    outcome = agent(claude, checks=FakeChecks(bad={"p1"}), caps=Caps(max_calls=2)).run(jpeg(), "en")
+    outcome = agent(claude, checks=FakeChecks(bad={"p1"}), caps=Caps(max_calls=2)).run_scan(
+        jpeg(), PIECES, BRIEF, "en"
+    )
 
     assert (outcome.status, outcome.code) == ("failed", "no_valid_build")
 
@@ -214,7 +210,9 @@ def test_the_time_cap_is_checked_before_every_call():
 
     claude = FakeClaude([[tool("place_pieces", {"pieces": CAR})], [tool("validate")]])
 
-    outcome = agent(slow, caps=Caps(max_seconds=300), clock=clock).run(jpeg(), "en")
+    outcome = agent(slow, caps=Caps(max_seconds=300), clock=clock).run_scan(
+        jpeg(), PIECES, BRIEF, "en"
+    )
 
     assert (outcome.code, outcome.calls) == ("max_seconds", 2)
 
@@ -230,10 +228,10 @@ def test_the_cost_cap_holds_even_in_the_worst_case():
         # Before each call, what's spent so far plus that call's worst case.
         before_call=lambda worst: room.append(spent[0] + worst),
         on_call=lambda response, cost: spent.__setitem__(0, spent[0] + cost),
-    ).run(jpeg(), "en")
+    ).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     assert outcome.code == "no_valid_build"
-    assert len(room) == outcome.calls == 3
+    assert len(room) == outcome.calls == 4
     assert max(room) <= 0.50
     assert outcome.cost <= 0.50
 
@@ -242,7 +240,9 @@ def test_every_call_is_reported_with_its_cost():
     heard = []
     claude = FakeClaude(happy_script(), spend=usage(10, 1_000, 5_000, 2_000))
 
-    outcome = agent(claude, on_call=lambda response, cost: heard.append(cost)).run(jpeg(), "en")
+    outcome = agent(claude, on_call=lambda response, cost: heard.append(cost)).run_scan(
+        jpeg(), PIECES, BRIEF, "en"
+    )
 
     each = (10 * 4 + 1_000 * 20 + 5_000 * 0.20 + 2_000 * 5) / 1e6
     assert heard == pytest.approx([each, each])
@@ -262,64 +262,83 @@ def test_a_bad_tool_or_nothing_to_render_is_an_error_claude_can_read():
     ]
     claude = FakeClaude(script)
 
-    agent(claude).run(jpeg(), "en")
+    agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     nothing, unknown = results(claude, 1)
     assert nothing["is_error"] and unknown["is_error"]
     assert "no tool 'delete_everything'" in unknown["content"]
 
 
-IDEA = IdeaBrief(
-    title="Little race car",
-    summary="A red car with a green hood.",
-    steps=["Lay the plate.", "Add the body."],
-    parts=[PartCount(part=p["part"], color=p["color"], quantity=1) for p in CAR],
-)
-
-
-def test_an_idea_is_built_from_its_own_pairs_and_keeps_its_title():
-    extra = {"part": "brick-1x1", "color": "white", "x": 5, "y": 5, "z": 0, "rotation": 0}
-    script = [
-        [tool("place_pieces", {"pieces": [*CAR, extra]}), tool("render", {"view": "all"})],
-        [tool("finish", {"title": "Racer", "summary": "Red.", "steps": ["One.", "Two."]})],
+def test_only_the_scans_pieces_go_in_and_no_more_than_it_counted():
+    extra = [
+        {"part": "brick-1x1", "color": "white", "x": 5, "y": 5, "z": 0, "rotation": 0},
+        {"part": "brick-1x1", "color": "white", "x": 7, "y": 5, "z": 0, "rotation": 0},
+        {"part": "brick-1x1", "color": "white", "x": 9, "y": 5, "z": 0, "rotation": 0},
+        {"part": "brick-1x1", "color": "blue", "x": 11, "y": 5, "z": 0, "rotation": 0},
     ]
-    claude = FakeClaude(script)
+    script = [[tool("place_pieces", {"pieces": [*CAR, *extra]}), tool("validate")]]
+    claude = FakeClaude([*script, [tool("render", {"view": "all"})], [tool("finish", FINISH)]])
 
-    outcome = agent(claude).run_idea(IDEA, "id")
+    outcome = agent(claude).run_scan(jpeg(), PIECES, BRIEF, "en")
 
-    request = claude.calls[0]["messages"][0]["content"]
-    assert len(request) == 1 and request[0]["type"] == "text"
-    assert "Title: Little race car" in request[0]["text"]
-    assert "- 1 × red 2×4 brick (`brick-2x4`, `red`)" in request[0]["text"]
-    assert "at most 12 pieces in all" in request[0]["text"]
-    assert "in Indonesian" in request[0]["text"]
-    placed = json.loads(results(claude, 1)[0]["content"])["placed"]
-    assert placed[-1] == {"error": "white brick-1x1 isn't one of this idea's parts"}
-    assert (outcome.status, outcome.title, outcome.steps) == (
-        "done",
-        "Little race car",
-        ["One.", "Two."],
+    placed, report = results(claude, 1)
+    answers = json.loads(placed["content"])["placed"]
+    assert answers[-2:] == [
+        {"error": "the person has only 2 white brick-1x1, and all are in the build"},
+        {"error": "the person has no blue brick-1x1"},
+    ]
+    # validate lists what's left: nothing, once both white bricks are in.
+    assert json.loads(report["content"])["left"] == []
+    assert outcome.status == "done"
+    assert len(outcome.pieces) == 8
+
+
+def test_a_build_is_never_bigger_than_the_scan():
+    many = [PartCount(part="brick-2x4", color="red", quantity=50)]
+    brief = BuildBrief(theme="buildings", kind="a tall building", max_pieces=40)
+    claude = FakeClaude([[tool("validate")]])
+
+    agent(claude, caps=Caps(max_calls=1)).run_scan(jpeg(), many, brief, "en")
+    agent(FakeClaude([[tool("validate")]]), caps=Caps(max_calls=1)).run_scan(
+        jpeg(), PIECES, brief, "en"
     )
-    assert len(outcome.pieces) == 6
+
+    assert "using at most 40 pieces" in claude.calls[0]["messages"][0]["content"][2]["text"]
 
 
-def test_an_ideas_preview_asks_for_fewer_tokens_and_its_cap_holds():
+def test_builds_the_person_has_seen_are_named_so_the_next_differs():
+    brief = BuildBrief(theme="animals", kind="a bird", max_pieces=40, avoid=["Duck", "Owl"])
+    claude = FakeClaude([[tool("validate")]])
+
+    agent(claude, caps=Caps(max_calls=1)).run_scan(jpeg(), PIECES, brief, "en")
+
+    text = claude.calls[0]["messages"][0]["content"][2]["text"]
+    assert "already seen these builds from their pieces: Duck; Owl" in text
+
+
+@pytest.mark.parametrize(("pieces", "difficulty"), [(3, "easy"), (8, "easy"), (9, "medium"),
+                                                     (16, "medium"), (17, "hard")])  # fmt: skip
+def test_difficulty_follows_the_piece_count(pieces, difficulty):
+    assert difficulty_of(pieces) == difficulty
+
+
+def test_a_build_asks_for_few_tokens_so_its_cap_holds():
     claude = FakeClaude([[tool("validate")]] * 5, spend=usage(output=1_000, write=3_000))
 
-    outcome = agent(claude, caps=Caps(max_cost=0.25), max_tokens=4000).run_idea(IDEA, "en")
+    outcome = agent(claude, caps=Caps(max_cost=0.25)).run_scan(jpeg(), PIECES, BRIEF, "en")
 
-    assert claude.calls[0]["max_tokens"] == 4000
+    assert claude.calls[0]["max_tokens"] == MAX_TOKENS == 4000
     assert outcome.code == "no_valid_build"
     assert outcome.cost <= 0.25
 
 
-def test_an_idea_that_runs_out_keeps_its_title_with_plain_steps():
+def test_a_build_that_runs_out_gets_a_plain_title_and_steps():
     claude = FakeClaude([[tool("place_pieces", {"pieces": CAR})], [tool("validate")]])
 
-    outcome = agent(claude, caps=Caps(max_calls=2)).run_idea(IDEA, "en")
+    outcome = agent(claude, caps=Caps(max_calls=2)).run_scan(jpeg(), PIECES, BRIEF, "en")
 
     assert (outcome.status, outcome.written_by, outcome.title) == (
         "done",
         "plain",
-        "Little race car",
+        "A build from your pieces",
     )

@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from starlette.concurrency import run_in_threadpool
 
-from legoin_api.deps import CurrentAccount, PreviewsDep, PublicUrlsDep, StoreDep
+from legoin_api.deps import CurrentAccount, PublicUrlsDep, ScanBuildsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import IdeaGenerator, IdeasUnavailable
 from legoin_api.ideas.service import write_ideas
@@ -33,36 +33,39 @@ async def create_ideas(
     store: StoreDep,
     generator: GeneratorDep,
     urls: PublicUrlsDep,
-    previews: PreviewsDep,
+    scan_builds: ScanBuildsDep,
     request: Request,
 ) -> IdeaSet:
     scan = await run_in_threadpool(store.get_scan, account.id, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
     written = await run_in_threadpool(store.written_ideas, account.id, scan_id)
-    timeout = request.app.state.settings.ideas_timeout_s
-    try:
-        async with asyncio.timeout(timeout):
-            ideas, keys, inventory = await write_ideas(generator, scan, body, written)
-    except TimeoutError as error:
-        raise ApiError("timeout", f"Writing ideas took over {timeout:g} seconds.") from error
-    except IdeasUnavailable as error:
-        raise ApiError(
-            "unavailable", "The idea writer is unavailable.", headers={"Retry-After": "10"}
-        ) from error
+    # Claude builds the set from the scan when it can (ADR-0013); otherwise it's written as text.
+    plan = await run_in_threadpool(scan_builds.plan, account.id, scan, body, written)
+    if plan is not None:
+        ideas, keys, inventory = plan.ideas, plan.keys, plan.inventory
+    else:
+        timeout = request.app.state.settings.ideas_timeout_s
+        try:
+            async with asyncio.timeout(timeout):
+                ideas, keys, inventory = await write_ideas(generator, scan, body, written)
+        except TimeoutError as error:
+            raise ApiError("timeout", f"Writing ideas took over {timeout:g} seconds.") from error
+        except IdeasUnavailable as error:
+            raise ApiError(
+                "unavailable", "The idea writer is unavailable.", headers={"Retry-After": "10"}
+            ) from error
     # A request that fails changes nothing; only now is the set kept, and what's kept is
     # what's answered.
     kept = await run_in_threadpool(store.keep_ideas, account.id, scan_id, ideas, keys, inventory)
     if kept is None or kept.ideas is None:
         raise scan_not_found(scan_id)
-    # Previews start after the set is kept, and never fail the request (ADR-0012).
+    # The old set's builds go and the new set's start, after the set is kept; this never fails
+    # the request.
     try:
-        await run_in_threadpool(previews.after_ideas, account.id, scan_id)
-        kept = await run_in_threadpool(store.get_scan, account.id, scan_id) or kept
+        await run_in_threadpool(scan_builds.after_ideas, account.id, kept, plan)
     except Exception:
-        log.exception("Couldn't start the previews of scan %s's ideas", scan_id)
-    if kept.ideas is None:
-        raise scan_not_found(scan_id)
+        log.exception("Couldn't start or forget the builds of scan %s's ideas", scan_id)
     return urls.with_previews(kept.ideas)
 
 
@@ -73,13 +76,8 @@ def get_idea(
     account: CurrentAccount,
     store: StoreDep,
     urls: PublicUrlsDep,
-    previews: PreviewsDep,
 ) -> StoredIdea:
-    # Opening an `on_open` idea starts its preview; the answer already says `pending`.
-    try:
-        previews.on_open(account.id, scan_id, idea_id)
-    except Exception:
-        log.exception("Couldn't start the preview of idea %s", idea_id)
+    # An idea still being built isn't one yet: it has no text to read.
     scan = store.get_scan(account.id, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)

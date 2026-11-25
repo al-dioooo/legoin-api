@@ -22,7 +22,6 @@ Theme = Literal["vehicles", "animals", "buildings", "surprise"]
 IdeaTheme = Literal["vehicles", "animals", "buildings"]
 Difficulty = Literal["easy", "medium", "hard"]
 Locale = Literal["en", "id"]
-PreviewStatus = Literal["pending", "on_open", "ready", "unavailable"]
 
 ErrorCode = Literal[
     "invalid_request",
@@ -39,12 +38,6 @@ ErrorCode = Literal[
     "invalid_credentials",
     "email_taken",
     "rate_limited",
-    # Picture builds (contract section 13, ADR-0012).
-    "picture_limit",
-    "picture_budget",
-    "picture_unusable",
-    "picture_refused",
-    "no_valid_build",
 ]
 
 # Leaves an optional field out of the answer instead of sending `null`.
@@ -113,18 +106,26 @@ class Idea(WireModel):
     used: list[PartCount]
     missing: list[PartCount]
     build_id: Id | None = Field(**_omit_none)
-    """The library build this idea is, or its built preview's (`gen_…`). Kept with the idea;
-    its `preview` is added on the way out, so its URLs follow the public URL and the files'
-    versions."""
+    """The library build this idea is, or the build Claude made of it from the scan (`gen_…`,
+    ADR-0013). Kept with the idea; its `preview` is added on the way out, so its URLs follow
+    the public URL and the files' versions."""
     preview: Preview | None = Field(**_omit_none)
-    preview_status: PreviewStatus | None = Field(**_omit_none)
-    """For an idea Claude wrote, when previews are on (ADR-0012, "Idea previews")."""
+
+
+class BuildingIdea(WireModel):
+    """An idea Claude is still building from the scan (ADR-0013): it becomes an `Idea` with the
+    same id, a build and a preview, or, if the build fails, an idea written as text."""
+
+    id: Id
+    theme: IdeaTheme
 
 
 class IdeaSet(WireModel):
     theme: Theme
     locale: Locale
     items: list[Idea]
+    building: list[BuildingIdea] | None = Field(**_omit_none)
+    """The set's ideas still being built, in order; left out once there are none."""
 
 
 class StoredIdea(WireModel):

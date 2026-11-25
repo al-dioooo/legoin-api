@@ -108,17 +108,30 @@ def test_plain_steps_go_level_by_level_and_stay_short():
     assert steps[0] == "Pasang 2 × brick 1×1 merah, 1 × plate 2×2 biru."
     assert layer_steps(build.snapshot()[:1], "en") == ["Add 1 × red 1×1 brick."]
     assert plain_text(build.snapshot(), "en") == (
-        "Your picture build",
-        "A 13-piece build of your picture.",
+        "A build from your pieces",
+        "A 13-piece build from your pieces.",
     )
 
 
-def test_an_ideas_build_takes_only_its_pairs_and_its_count():
-    build = Build(allowed=frozenset({("brick-2x4", "red")}), max_pieces=2)
+def test_a_build_from_a_scan_takes_only_its_pieces_and_their_counts():
+    stock = [
+        PartCount(part="brick-2x4", color="red", quantity=2),
+        PartCount(part="brick-2x4", color="green", quantity=5),
+    ]
+    build = Build(stock=stock, max_pieces=3)
 
-    answers = build.place([piece(), piece(color="blue", z=3), piece(z=3), piece(z=6)])
+    answers = build.place(
+        [piece(), piece(color="blue", z=3), piece(z=3), piece(z=6), piece(color="green", z=6),
+         piece(color="green", z=9)]
+    )  # fmt: skip
 
     assert answers[0] == {"id": "p1"}
-    assert answers[1] == {"error": "blue brick-2x4 isn't one of this idea's parts"}
+    assert answers[1] == {"error": "the person has no blue brick-2x4"}
     assert answers[2] == {"id": "p2"}
-    assert answers[3] == {"error": "the build already has 2 pieces, the most"}
+    assert answers[3] == {"error": "the person has only 2 red brick-2x4, and all are in the build"}
+    assert answers[4] == {"id": "p3"}
+    assert answers[5] == {"error": "the build already has 3 pieces, the most"}
+    assert build.left() == [{"part": "brick-2x4", "color": "green", "quantity": 4}]
+    # Removing a piece gives it back.
+    build.remove(["p1"])
+    assert build.place([piece(z=12)]) == [{"id": "p4"}]

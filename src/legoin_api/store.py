@@ -291,6 +291,15 @@ class Store:
             ).fetchall()
         return [ShownIdea(row["idea_id"], row["key"], row["theme"], row["title"]) for row in rows]
 
+    def record_written(self, scan_id: str, idea_id: str, key: str, theme: str, title: str) -> None:
+        """An idea that joined the scan's set after it was kept: a build Claude finished, or the
+        idea written instead of one that failed (ADR-0013)."""
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO ideas_written VALUES (?, ?, ?, ?, ?, ?)",
+                (scan_id, idea_id, key, theme, title, utc_now()),
+            )
+
     def keep_ideas(
         self,
         account_id: str,

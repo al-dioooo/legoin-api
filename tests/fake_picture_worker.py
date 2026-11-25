@@ -12,10 +12,10 @@ def emit(event):
 
 
 behaviour = spec["behaviour"]
-emit({"type": "stage", "stage": "designing"})
+emit({"type": "calling", "build": 0, "worst": 0.1})
 if behaviour == "done":
     print("not an event", flush=True)
-    emit({"type": "failed", "code": "picture_unusable", "message": "Nothing to build."})
+    emit({"type": "failed", "build": 0, "code": "refused", "message": "Declined."})
 elif behaviour == "hang":
     emit({"type": "calling", "worst": 0.2})
     time.sleep(60)

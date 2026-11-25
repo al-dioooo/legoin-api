@@ -1,9 +1,12 @@
-"""Fakes for picture builds: Claude, BrickLayer's checks and the renderer."""
+"""Fakes for builds from scans: Claude, BrickLayer's checks and the renderer."""
 
 import io
 from types import SimpleNamespace
 
 from PIL import Image
+
+from legoin_api.picture.prompt import BuildBrief
+from legoin_api.schemas import PartCount
 
 CAR = [
     {"part": "plate-2x4", "color": "black", "x": 0, "y": 0, "z": 0, "rotation": 90},
@@ -14,6 +17,18 @@ CAR = [
     {"part": "round-1x1", "color": "yellow", "x": 1, "y": 0, "z": 1, "rotation": 0},
 ]
 """The race car from the prompt's example: valid in BrickLayer."""
+
+PIECES = [
+    PartCount(part="plate-2x4", color="black", quantity=1),
+    PartCount(part="brick-2x4", color="red", quantity=1),
+    PartCount(part="slope-2x2", color="green", quantity=1),
+    PartCount(part="brick-2x2", color="black", quantity=1),
+    PartCount(part="round-1x1", color="yellow", quantity=2),
+    PartCount(part="brick-1x1", color="white", quantity=2),
+]
+"""A scan's pieces: the car's, and two white 1×1 bricks to spare."""
+
+BRIEF = BuildBrief(theme="vehicles", kind="a vehicle for the road", max_pieces=40)
 
 FINISH = {
     "title": "Little race car",

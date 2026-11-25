@@ -3,6 +3,7 @@
 Run it with `uv run uvicorn --factory legoin_api.main:create_app`.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,24 +15,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from legoin_api import __version__, errors
 from legoin_api.accounts import FailedLogins, Passwords
 from legoin_api.builds import BuildLibrary
-from legoin_api.config import (
-    IdeaPreviewMode,
-    IdeasGeneratorKind,
-    PictureBuildsKind,
-    PipelineKind,
-    Settings,
-)
+from legoin_api.config import IdeasGeneratorKind, PipelineKind, ScanBuildsKind, Settings
 from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
 from legoin_api.picture import availability
 from legoin_api.picture.files import PictureFiles
-from legoin_api.picture.jobs import Limits, PictureJobs, PreviewLimits, Runner
-from legoin_api.picture.previews import IdeaPreviews
+from legoin_api.picture.jobs import BuildJobs, Limits, Runner
 from legoin_api.picture.runner import ProcessRunner
+from legoin_api.picture.scan_builds import ScanBuilds
 from legoin_api.picture.store import PictureStore
 from legoin_api.pipeline import Pipeline
-from legoin_api.routes import auth, builds, health, ideas, photos, picture_builds, scan_jobs, scans
+from legoin_api.routes import auth, builds, health, ideas, photos, scan_jobs, scans
 from legoin_api.store import Store
 
 log = logging.getLogger("legoin_api")
@@ -80,67 +75,50 @@ def load_idea_generator(settings: Settings, builds: BuildLibrary) -> IdeaGenerat
     )
 
 
-def load_picture_runner(settings: Settings) -> Runner | None:
-    """The worker process runner, or None when neither picture builds nor previews of ideas
-    can run here (ADR-0012)."""
-    missing = availability.missing(settings)
-    if missing and settings.picture_builds is PictureBuildsKind.ANTHROPIC:
-        log.warning("Picture builds are off: %s.", "; ".join(missing))
-    missing_previews = availability.missing_previews(settings)
-    if missing_previews and settings.idea_previews is not IdeaPreviewMode.OFF:
-        log.warning("Previews of ideas are off: %s.", "; ".join(missing_previews))
-    if missing and missing_previews:
+def load_build_runner(settings: Settings) -> Runner | None:
+    """The worker process runner, or None when builds from scans can't run here (ADR-0013)."""
+    if missing := availability.missing(settings):
+        if settings.scan_builds is ScanBuildsKind.ANTHROPIC:
+            log.warning("Builds from scans are off: %s.", "; ".join(missing))
         return None
-    if not missing_previews:
-        log.info(
-            "Previews of ideas on (%s), with %s at effort %s: %d a day per account, $%.2f each",
-            settings.idea_previews,
-            settings.idea_preview_model,
-            settings.idea_preview_effort,
-            settings.idea_preview_daily_limit,
-            settings.idea_preview_cost_usd,
-        )
-    if missing:
-        return ProcessRunner(
-            deadline_s=preview_limits(settings).deadline_s,
-            memory_mb=settings.picture_worker_memory_mb,
-        )
+    limits = build_limits(settings)
     log.info(
-        "Picture builds on, with %s at effort %s: $%.2f a day, %d a day per account, $%.2f a job",
-        settings.picture_model,
-        settings.picture_effort,
-        settings.picture_daily_budget_usd,
-        settings.picture_daily_limit,
-        settings.picture_job_cost_usd,
+        "Builds from scans on, with %s at effort %s: $%.2f a day, %d sets a day per account, "
+        "$%.2f a build",
+        limits.model,
+        limits.effort,
+        limits.daily_budget,
+        limits.daily_sets,
+        limits.build_cost,
     )
     return ProcessRunner(
-        deadline_s=picture_limits(settings).deadline_s,
-        memory_mb=settings.picture_worker_memory_mb,
+        deadline_s=limits.deadline_s(3), memory_mb=settings.scan_build_worker_memory_mb
     )
 
 
-def picture_limits(settings: Settings) -> Limits:
+def build_limits(settings: Settings) -> Limits:
     return Limits(
-        model=settings.picture_model,
-        effort=settings.picture_effort,
-        daily_budget=settings.picture_daily_budget_usd,
-        daily_limit=settings.picture_daily_limit,
-        job_cost=settings.picture_job_cost_usd,
-        job_seconds=settings.picture_job_seconds,
-        job_calls=settings.picture_job_calls,
-        queue_size=settings.picture_queue_size,
+        model=settings.scan_build_model,
+        effort=settings.scan_build_effort,
+        daily_budget=settings.scan_build_daily_budget_usd,
+        daily_sets=settings.scan_build_daily_sets,
+        build_cost=settings.scan_build_cost_usd,
+        build_seconds=settings.scan_build_seconds,
+        build_calls=settings.scan_build_calls,
+        max_pieces=settings.scan_build_max_pieces,
+        queue_size=settings.scan_build_queue_size,
+        stagger_s=settings.scan_build_stagger_s,
     )
 
 
-def preview_limits(settings: Settings) -> PreviewLimits:
-    return PreviewLimits(
-        model=settings.idea_preview_model,
-        effort=settings.idea_preview_effort,
-        daily_limit=settings.idea_preview_daily_limit,
-        job_cost=settings.idea_preview_cost_usd,
-        job_seconds=settings.idea_preview_seconds,
-        job_calls=settings.idea_preview_calls,
-    )
+def delete_files(files: PictureFiles):
+    def delete(names: list[str]) -> None:
+        for name in names:
+            files.delete(name)
+        if names:
+            log.info("Deleted %d files of the standalone picture builds (ADR-0013)", len(names))
+
+    return delete
 
 
 def warn_about_deployment(settings: Settings) -> None:
@@ -159,12 +137,12 @@ def create_app(
     pipeline: Pipeline | None = None,
     idea_generator: IdeaGenerator | None = None,
     password_hasher: PasswordHasher | None = None,
-    picture_runner: Runner | None = None,
+    build_runner: Runner | None = None,
 ) -> FastAPI:
     """The app. Tests pass their own `pipeline`, `idea_generator`, a cheap `password_hasher`
-    and a `picture_runner`; otherwise `LEGOIN_PIPELINE` picks the pipeline,
-    `LEGOIN_IDEAS_GENERATOR` what writes ideas, passwords get Argon2id's defaults, and picture
-    builds run in a worker process when `LEGOIN_PICTURE_BUILDS` and the rest allow."""
+    and a `build_runner`; otherwise `LEGOIN_PIPELINE` picks the pipeline,
+    `LEGOIN_IDEAS_GENERATOR` what writes ideas, passwords get Argon2id's defaults, and builds
+    from scans run in a worker process when `LEGOIN_SCAN_BUILDS` and the rest allow."""
     settings = settings or Settings()
 
     @asynccontextmanager
@@ -181,32 +159,31 @@ def create_app(
             queue_size=settings.scan_queue_size,
         )
         app.state.ideas = idea_generator or load_idea_generator(settings, app.state.builds)
-        # Built builds stay readable when picture builds are off; only new jobs need a runner.
-        app.state.picture_store = PictureStore(settings.data_dir / "picture.db")
+        # Built ideas stay readable when builds are off; only new sets need a runner.
         app.state.picture_files = PictureFiles(settings.data_dir / "picture-files")
-        # A runner passed in (tests) turns on whatever the settings ask for.
-        runner = picture_runner or load_picture_runner(settings)
-        passed = picture_runner is not None
-        pictures_on = passed or not availability.missing(settings)
-        previews_on = settings.idea_previews is not IdeaPreviewMode.OFF and (
-            passed or not availability.missing_previews(settings)
+        app.state.picture_store = PictureStore(
+            settings.data_dir / "picture.db", delete_files=delete_files(app.state.picture_files)
         )
-        app.state.picture_jobs = PictureJobs(
+        # A runner passed in (tests) turns builds on.
+        app.state.build_jobs = BuildJobs(
             app.state.picture_store,
             app.state.picture_files,
             settings.data_dir / "picture-jobs",
-            picture_limits(settings),
-            runner,
-            pictures=pictures_on,
-            previews=preview_limits(settings) if previews_on else None,
+            build_limits(settings),
+            build_runner or load_build_runner(settings),
         )
-        app.state.idea_previews = IdeaPreviews(
-            settings.idea_previews, app.state.picture_jobs, app.state.store
+        app.state.scan_builds = ScanBuilds(
+            app.state.build_jobs,
+            app.state.store,
+            app.state.photos,
+            app.state.builds,
+            app.state.ideas,
+            asyncio.get_running_loop(),
         )
         yield
         # The workers first, so no job writes to a closed store.
         app.state.jobs.shutdown()
-        app.state.picture_jobs.shutdown()
+        app.state.build_jobs.shutdown()
         app.state.picture_store.close()
         app.state.store.close()
         if close := getattr(app.state.ideas, "aclose", None):
@@ -236,5 +213,4 @@ def create_app(
     app.include_router(ideas.router)
     app.include_router(photos.router)
     app.include_router(builds.router)
-    app.include_router(picture_builds.router)
     return app

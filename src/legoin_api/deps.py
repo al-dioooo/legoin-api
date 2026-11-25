@@ -8,7 +8,8 @@ from legoin_api.accounts import FailedLogins, Passwords, token_hash
 from legoin_api.builds import BuildLibrary
 from legoin_api.errors import ApiError
 from legoin_api.photos import PhotoStore
-from legoin_api.picture.previews import IdeaPreviews
+from legoin_api.picture.files import PictureFiles
+from legoin_api.picture.scan_builds import ScanBuilds
 from legoin_api.schemas import IdeaSet, Preview
 from legoin_api.store import Store, StoredAccount
 
@@ -73,7 +74,7 @@ class PublicUrls:
         return f"{self.base}/v1/picture-files/{name}"
 
     def built_preview(self, build_id: str) -> Preview | None:
-        """A built idea preview's picture and model (ADR-0012)."""
+        """The picture and model of a build Claude made of an idea (ADR-0013)."""
         store = getattr(self.app_state, "picture_store", None)
         build = store.get_idea_build(build_id) if store else None
         if build is None:
@@ -96,9 +97,14 @@ CurrentAccount = Annotated[StoredAccount, Depends(current_account)]
 """Every route that needs a session takes it."""
 
 
-def get_previews(request: Request):
-    """Previews of ideas (ADR-0012); its hooks never fail a request."""
-    return request.app.state.idea_previews
+def get_scan_builds(request: Request) -> ScanBuilds:
+    """Ideas built from the scan (ADR-0013); its hooks never fail a request."""
+    return request.app.state.scan_builds
 
 
-PreviewsDep = Annotated[IdeaPreviews, Depends(get_previews)]
+def get_picture_files(request: Request) -> PictureFiles:
+    return request.app.state.picture_files
+
+
+ScanBuildsDep = Annotated[ScanBuilds, Depends(get_scan_builds)]
+PictureFilesDep = Annotated[PictureFiles, Depends(get_picture_files)]
