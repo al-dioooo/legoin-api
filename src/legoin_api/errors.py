@@ -25,6 +25,8 @@ STATUS: dict[ErrorCode, int] = {
     "invalid_credentials": 401,
     "email_taken": 409,
     "rate_limited": 429,
+    "picture_limit": 429,
+    "picture_budget": 503,
 }
 
 
