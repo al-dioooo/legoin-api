@@ -1,4 +1,5 @@
 import io
+import sqlite3
 import struct
 import threading
 import time
@@ -406,3 +407,16 @@ def test_a_photo_that_is_refused_gives_its_place_back(settings):
         assert upload(client, encode(pieces())).status_code == 202
         assert upload(client, encode(pieces())).status_code == 503
         pipeline.open_all()
+
+
+def test_a_scan_that_cannot_be_saved_leaves_no_photo(client, monkeypatch):
+    def disk_full(scan):
+        raise sqlite3.OperationalError("database or disk is full")
+
+    monkeypatch.setattr(client.app.state.store, "insert_scan", disk_full)
+
+    job = poll(client, upload(client, encode(pieces())).json()["id"])
+
+    assert job["status"] == "failed"
+    assert job["error"]["code"] == "internal"
+    assert not any(client.app.state.photos.directory.iterdir())

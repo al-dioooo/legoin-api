@@ -215,22 +215,26 @@ class JobManager:
                 )
             )
         photo = self.photos.save(image)
-        with self._lock:
-            keep = self._running(job)
-            if keep:
-                scan = StoredScan(
-                    id=new_id("scn", 12),
-                    device_id=job.device_id,
-                    created_at=utc_now(),
-                    photo_file=photo,
-                    photo_width=image.width,
-                    photo_height=image.height,
-                    detections=detections,
-                )
-                self.store.insert_scan(scan)
-                job.status, job.scan_id, job.ended_at = "done", scan.id, self.clock()
-        if not keep:
-            self.photos.delete(photo)
+        kept = False
+        try:
+            with self._lock:
+                if self._running(job):
+                    scan = StoredScan(
+                        id=new_id("scn", 12),
+                        device_id=job.device_id,
+                        created_at=utc_now(),
+                        photo_file=photo,
+                        photo_width=image.width,
+                        photo_height=image.height,
+                        detections=detections,
+                    )
+                    self.store.insert_scan(scan)
+                    job.status, job.scan_id, job.ended_at = "done", scan.id, self.clock()
+                    kept = True
+        finally:
+            # Not kept, or the insert failed (a full disk, a closed store): no orphaned photo.
+            if not kept:
+                self.photos.delete(photo)
 
     def _end(self, job: Job, *, error: ErrorDetail) -> None:
         with self._lock:
