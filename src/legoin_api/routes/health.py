@@ -17,4 +17,9 @@ def health(request: Request) -> dict[str, str]:
     answer["ideas"] = settings.ideas_kind
     if settings.ideas_kind == "anthropic":
         answer["ideasModel"] = settings.ideas_model
+    # Whether picture jobs are accepted: configured, and everything they need is here.
+    jobs = getattr(request.app.state, "picture_jobs", None)
+    answer["pictureBuilds"] = "anthropic" if jobs and jobs.enabled else "off"
+    if answer["pictureBuilds"] == "anthropic":
+        answer["pictureModel"] = settings.picture_model
     return answer
