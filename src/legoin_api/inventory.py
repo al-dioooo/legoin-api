@@ -12,6 +12,7 @@ from legoin_api.schemas import (
     Detection,
     DetectionChange,
     EditChange,
+    IdeaSet,
     PartCount,
     RemoveChange,
 )
@@ -105,3 +106,12 @@ def cek_inventori(
         if line.quantity > owned:
             missing.append(line.model_copy(update={"quantity": line.quantity - owned}))
     return used, missing
+
+
+def recheck(ideas: IdeaSet, inventory: list[PartCount]) -> IdeaSet:
+    """The same builds, with `used` and `missing` worked out again against `inventory`."""
+    items = []
+    for idea in ideas.items:
+        used, missing = cek_inventori(idea.used + idea.missing, inventory)
+        items.append(idea.model_copy(update={"used": used, "missing": missing}))
+    return ideas.model_copy(update={"items": items})

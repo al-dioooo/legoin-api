@@ -46,10 +46,12 @@ async def create_ideas(
         raise ApiError(
             "unavailable", "The idea writer is unavailable.", headers={"Retry-After": "10"}
         ) from error
-    # A request that fails changes nothing; only now is the set kept.
-    if await run_in_threadpool(store.keep_ideas, device, scan_id, ideas, keys, inventory) is None:
+    # A request that fails changes nothing; only now is the set kept, and what's kept is
+    # what's answered.
+    kept = await run_in_threadpool(store.keep_ideas, device, scan_id, ideas, keys, inventory)
+    if kept is None or kept.ideas is None:
         raise scan_not_found(scan_id)
-    return ideas
+    return kept.ideas
 
 
 @router.get("/scans/{scan_id}/ideas/{idea_id}")

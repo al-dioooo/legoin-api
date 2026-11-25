@@ -12,9 +12,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import ShownIdea
 from legoin_api.ids import utc_now
-from legoin_api.inventory import to_inventory
+from legoin_api.inventory import recheck, to_inventory
 from legoin_api.schemas import Detection, IdeaSet, PartCount, Photo, Scan, Theme
 
 SCHEMA = """
@@ -188,11 +189,14 @@ class Store:
         keys: list[str],
         checked_against: list[PartCount],
     ) -> StoredScan | None:
-        """Keeps a new set as the scan's `ideas` and its theme as `lastTheme`, in one transaction.
+        """Keeps a new set as the scan's `ideas` and its theme as `lastTheme`, in one transaction,
+        and gives the scan back with the set as kept. None if the scan is gone.
 
-        If a correction changed the inventory while the ideas were being written, they were
-        checked against pieces that are gone: the set isn't kept, as if the correction came
-        just after it. `lastTheme` is set either way. None if the scan is gone.
+        If a correction changed the inventory while the ideas were being written, the builds
+        still stand, but they were checked against pieces that have changed: `used` and
+        `missing` are worked out again against the pieces as they are now, so the set that's
+        answered is the set that's kept. With no pieces left, it's `no_pieces` and nothing
+        changes.
         """
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
@@ -204,10 +208,12 @@ class Store:
                     self._db.execute("ROLLBACK")
                     return None
                 scan = _row_to_scan(row)
-                current = to_inventory(scan.detections) == checked_against
-                scan = scan.with_changes(
-                    last_theme=ideas.theme, ideas=ideas if current else scan.ideas
-                )
+                inventory = to_inventory(scan.detections)
+                if inventory != checked_against:
+                    if not inventory:
+                        raise ApiError("no_pieces", f"Scan {scan_id} has no pieces to build with.")
+                    ideas = recheck(ideas, inventory)
+                scan = scan.with_changes(last_theme=ideas.theme, ideas=ideas)
                 now = utc_now()
                 self._db.executemany(
                     "INSERT INTO ideas_written VALUES (?, ?, ?, ?, ?, ?)",
