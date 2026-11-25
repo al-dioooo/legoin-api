@@ -1,9 +1,9 @@
-"""A picture build's files on the local disk, served at unguessable URLs, like photos.
+"""The files of the builds Claude makes from scans, on the local disk, served at unguessable
+URLs, like photos (ADR-0013).
 
-Each build has three: the uploaded picture as a JPEG with no metadata, its preview as WebP,
-and its LDraw model. Each has a random 128-bit name, so `/v1/picture-files/{name}` loads in a
-plain `<img>`, or downloads, with no header, but can't be guessed. They live exactly as long as
-their build.
+Each build has two: its preview as WebP and its LDraw model. Each has a random 128-bit name, so
+`/v1/picture-files/{name}` loads in a plain `<img>`, or downloads, with no header, but can't be
+guessed. They live exactly as long as their build.
 """
 
 import re
@@ -11,17 +11,10 @@ import secrets
 import shutil
 from pathlib import Path
 
-from PIL import Image
-
 NAME = re.compile(r"[A-Za-z0-9_-]{22}\.(jpg|webp|ldr)")
+"""`jpg` is still a name the files had: the standalone picture builds' uploads (ADR-0012)."""
 
 MEDIA_TYPES = {"jpg": "image/jpeg", "webp": "image/webp", "ldr": "application/x-ldraw"}
-
-
-def save_jpeg(image: Image.Image, path: Path) -> None:
-    """Writes the upright picture as a JPEG with no EXIF, comment or XMP, as photos are."""
-    image.info = {}
-    image.save(path, "JPEG", quality=90)
 
 
 class PictureFiles:
