@@ -2,6 +2,130 @@
   "about": "Written by scripts/builds.py with bricklayer-sdk 0.1.0 and brickwright 0.1.0. Don't edit by hand.",
   "builds": [
     {
+      "id": "bus-stop",
+      "theme": "buildings",
+      "difficulty": "easy",
+      "title": {
+        "en": "Bus stop",
+        "id": "Halte bus"
+      },
+      "summary": {
+        "en": "Two posts, a flat roof and a bench.",
+        "id": "Dua tiang, atap datar, dan bangku."
+      },
+      "steps": {
+        "en": [
+          "Lay the dark gray 2×4 plate down as the pavement.",
+          "Stack two white 1×1 bricks on each back corner as the posts.",
+          "Put the brown 1×2 brick in front, between the posts, with the light gray 1×2 tile on top, as a bench.",
+          "Lay the black 2×4 plate on the posts as the roof."
+        ],
+        "id": [
+          "Letakkan plate 2×4 abu-abu gelap sebagai trotoar.",
+          "Tumpuk dua brick 1×1 putih di tiap sudut belakang sebagai tiang.",
+          "Pasang brick 1×2 cokelat di depan, di antara tiang, dengan tile 1×2 abu-abu terang di atasnya, sebagai bangku.",
+          "Letakkan plate 2×4 hitam di atas tiang sebagai atap."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "white",
+          "quantity": 4
+        },
+        {
+          "part": "brick-1x2",
+          "color": "brown",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x4",
+          "color": "black",
+          "quantity": 1
+        },
+        {
+          "part": "plate-2x4",
+          "color": "dark-gray",
+          "quantity": 1
+        },
+        {
+          "part": "tile-1x2",
+          "color": "light-gray",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "bus-stop/build.py",
+          "sha256": "1eefe389107d7d71017eaab7c6505dafe1c67bbee0b64dd12682f35c99c80ede"
+        },
+        "model": {
+          "path": "bus-stop/model.ldr",
+          "sha256": "ab53909149ea6c72f1986945ae235050b6fcfa477d6351107e1c7e75244ccdef"
+        },
+        "preview": {
+          "path": "bus-stop/preview.webp",
+          "sha256": "51a5a1a25917079d9ec3d2b07a1ff3f38b52247634b92388bafa4deb5415fc3a"
+        }
+      }
+    },
+    {
+      "id": "castle-tower",
+      "theme": "buildings",
+      "difficulty": "hard",
+      "title": {
+        "en": "Castle tower",
+        "id": "Menara kastel"
+      },
+      "summary": {
+        "en": "Gray walls with battlements on top.",
+        "id": "Dinding abu-abu dengan benteng di atasnya."
+      },
+      "steps": {
+        "en": [
+          "Start with the dark gray 2×4 plate as the base.",
+          "Stack two light gray 2×4 bricks as the walls.",
+          "Put four light gray 1×1 bricks on the corners as battlements."
+        ],
+        "id": [
+          "Mulai dengan plate 2×4 abu-abu gelap sebagai dasar.",
+          "Tumpuk dua brick 2×4 abu-abu terang sebagai dinding.",
+          "Pasang empat brick 1×1 abu-abu terang di sudut sebagai benteng."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x1",
+          "color": "light-gray",
+          "quantity": 4
+        },
+        {
+          "part": "brick-2x4",
+          "color": "light-gray",
+          "quantity": 2
+        },
+        {
+          "part": "plate-2x4",
+          "color": "dark-gray",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "castle-tower/build.py",
+          "sha256": "f04c6e15b6c17e668fefb1876109e3959cb09c8c89d212d4d3a97c32460cdf56"
+        },
+        "model": {
+          "path": "castle-tower/model.ldr",
+          "sha256": "005e4b0f2e0bde8cb13f73fe37a34d23b1fa3bab97f81c21903b59b538f0afad"
+        },
+        "preview": {
+          "path": "castle-tower/preview.webp",
+          "sha256": "e7364b8adf449535772686fc142177c9d4844f8034a47b0f4b2b7e2139b5556a"
+        }
+      }
+    },
+    {
       "id": "crab",
       "theme": "animals",
       "difficulty": "medium",
@@ -181,6 +305,67 @@
         "preview": {
           "path": "go-kart/preview.webp",
           "sha256": "2715381c3af639bfeb5bd0c0e032405d73c62fe15d66b1e204a8e2fc4cc37422"
+        }
+      }
+    },
+    {
+      "id": "lighthouse",
+      "theme": "buildings",
+      "difficulty": "medium",
+      "title": {
+        "en": "Lighthouse",
+        "id": "Mercusuar"
+      },
+      "summary": {
+        "en": "A striped tower with a yellow light.",
+        "id": "Menara bergaris dengan lampu kuning."
+      },
+      "steps": {
+        "en": [
+          "Start with a dark gray 2×2 plate as the base.",
+          "Stack 2×2 bricks red, white, red, white.",
+          "Finish with a yellow round on top as the light."
+        ],
+        "id": [
+          "Mulai dengan plate 2×2 abu-abu gelap sebagai dasar.",
+          "Tumpuk brick 2×2 merah, putih, merah, putih.",
+          "Tutup dengan round kuning di atas sebagai lampu."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-2x2",
+          "color": "red",
+          "quantity": 2
+        },
+        {
+          "part": "brick-2x2",
+          "color": "white",
+          "quantity": 2
+        },
+        {
+          "part": "plate-2x2",
+          "color": "dark-gray",
+          "quantity": 1
+        },
+        {
+          "part": "round-1x1",
+          "color": "yellow",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "lighthouse/build.py",
+          "sha256": "200c982a348e42bf871096e846778051e6a499e1d158dea19a62d132e2522f79"
+        },
+        "model": {
+          "path": "lighthouse/model.ldr",
+          "sha256": "ed279df7c82a7505d7d45f3bdeae61122074b462b293cd6339345171c2ede12b"
+        },
+        "preview": {
+          "path": "lighthouse/preview.webp",
+          "sha256": "f883fcd84e9cc2bada8a247c4f9e3c1c9891259f965c1c79f2998953b14df81c"
         }
       }
     },
@@ -619,6 +804,62 @@
       }
     },
     {
+      "id": "small-bridge",
+      "theme": "buildings",
+      "difficulty": "hard",
+      "title": {
+        "en": "Small bridge",
+        "id": "Jembatan kecil"
+      },
+      "summary": {
+        "en": "Brown pillars, a plate deck and a smooth road.",
+        "id": "Tiang cokelat, lantai plate, dan jalan yang mulus."
+      },
+      "steps": {
+        "en": [
+          "Build two pillars, each of two brown 1×2 bricks stacked, two studs apart.",
+          "Lay the black 2×4 plate across them as the deck.",
+          "Cover the middle of the deck with the two light gray 1×2 tiles as the road."
+        ],
+        "id": [
+          "Buat dua tiang, masing-masing dari dua brick 1×2 cokelat yang ditumpuk, berjarak dua stud.",
+          "Letakkan plate 2×4 hitam melintang di atasnya sebagai lantai jembatan.",
+          "Tutup bagian tengah lantai dengan dua tile 1×2 abu-abu terang sebagai jalan."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-1x2",
+          "color": "brown",
+          "quantity": 4
+        },
+        {
+          "part": "tile-1x2",
+          "color": "light-gray",
+          "quantity": 2
+        },
+        {
+          "part": "plate-2x4",
+          "color": "black",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "small-bridge/build.py",
+          "sha256": "3b342c121fdd2b8b0f6fe8f442db4322c208978453ef42d32afe057cb5cb7464"
+        },
+        "model": {
+          "path": "small-bridge/model.ldr",
+          "sha256": "4ec5347f1ec2e54c417928ca224f81f25825ab9d178eae5ea67f6a30d1f0b25c"
+        },
+        "preview": {
+          "path": "small-bridge/preview.webp",
+          "sha256": "6320843ae4066dd52f5db667c8883f51eaa521dba48ee8476dacf9b02e80031e"
+        }
+      }
+    },
+    {
       "id": "snail",
       "theme": "animals",
       "difficulty": "easy",
@@ -783,6 +1024,67 @@
         "preview": {
           "path": "turtle/preview.webp",
           "sha256": "f8acddfa0c40f7b498bfec8a0ae4dc6ba097c9a2fdcdb75c1ae034be3799b42f"
+        }
+      }
+    },
+    {
+      "id": "windmill",
+      "theme": "buildings",
+      "difficulty": "medium",
+      "title": {
+        "en": "Windmill",
+        "id": "Kincir angin"
+      },
+      "summary": {
+        "en": "A white tower, a red roof and sails.",
+        "id": "Menara putih, atap merah, dan baling-baling."
+      },
+      "steps": {
+        "en": [
+          "Stack three white 2×2 bricks as the tower.",
+          "Put the two brown 1×2 plates along the front of the top, each sticking out one stud to its side, as sails, and the white 1×2 plate behind them.",
+          "Top it with the red 2×2 slope as the roof."
+        ],
+        "id": [
+          "Tumpuk tiga brick 2×2 putih sebagai menara.",
+          "Pasang dua plate 1×2 cokelat berjajar di sisi depan atasnya, masing-masing menjorok satu stud ke samping, sebagai baling-baling, lalu plate 1×2 putih di belakangnya.",
+          "Tutup dengan slope 2×2 merah sebagai atap."
+        ]
+      },
+      "parts": [
+        {
+          "part": "brick-2x2",
+          "color": "white",
+          "quantity": 3
+        },
+        {
+          "part": "plate-1x2",
+          "color": "brown",
+          "quantity": 2
+        },
+        {
+          "part": "plate-1x2",
+          "color": "white",
+          "quantity": 1
+        },
+        {
+          "part": "slope-2x2",
+          "color": "red",
+          "quantity": 1
+        }
+      ],
+      "files": {
+        "source": {
+          "path": "windmill/build.py",
+          "sha256": "e18b0da3fb06ec315dad7db545ac7ff0166c170769c72e81e193f3a1bed26aa1"
+        },
+        "model": {
+          "path": "windmill/model.ldr",
+          "sha256": "44b51397d464316cf416a2c14fa1789d6a6f448e4a4cff5f6869c03ddcb533f8"
+        },
+        "preview": {
+          "path": "windmill/preview.webp",
+          "sha256": "130140f119ee18bd5746a869f91167944053e2ad9977a4ba82e1b98b2a2bf47b"
         }
       }
     }
