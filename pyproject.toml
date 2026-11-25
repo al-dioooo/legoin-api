@@ -27,6 +27,18 @@ models = [
     # Ultralytics asks for opencv-python, which needs libGL; the headless build doesn't.
     "opencv-python-headless",
 ]
+# Picture builds (ADR-0012): BrickLayer checks a build, and pygfx renders it on the CPU, at the
+# versions `scripts/builds.py` renders the library with. Rendering also needs the LDraw parts
+# library, outside the repository (`LDRAW_LIBRARY_PATH`). Tests and CI don't install it.
+picture = [
+    "bricklayer-sdk==0.1.0",
+    # pygfx loads ldraw2mesh's glTF with it.
+    "gltflib==1.0.13",
+    "ldraw2mesh==0.1.1",
+    "pygfx==0.18.0",
+    "rendercanvas==3.0.1",
+    "wgpu==0.33.0",
+]
 
 [dependency-groups]
 dev = [
