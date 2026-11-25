@@ -6,7 +6,12 @@ def test_health_reports_the_pipeline(client):
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": __version__, "pipeline": "stub"}
+    assert response.json() == {
+        "status": "ok",
+        "version": __version__,
+        "pipeline": "stub",
+        "ideas": "templates",
+    }
 
 
 def test_cors_allows_the_web_app(client):
