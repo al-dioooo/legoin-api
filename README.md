@@ -119,20 +119,20 @@ The only secret is `ANTHROPIC_API_KEY`. Never commit it, put it in an image or l
 
 ## The API
 
-The API follows legoin-docs [`api/contract.md`](https://github.com/al-dioooo/legoin-docs/blob/main/api/contract.md) (draft v0.1). The base URL includes the version: `/v1`.
+The API follows legoin-docs [`api/contract.md`](https://github.com/al-dioooo/legoin-docs/blob/main/api/contract.md) (draft 0.2). The base URL includes the version: `/v1`.
 
-Every route needs a `Legoin-Device-Id` header, the contract's placeholder for accounts: each device only sees its own scans. Errors share one body, `{"error": {"code", "message", "field?"}}`.
+Every scan, scan-job and idea route needs a session, as `Authorization: Bearer <token>` from registering or logging in, and each account only sees its own scans (ADR-0011). Without one, it's `401 unauthorized` with `WWW-Authenticate: Bearer`; another account's scan is a `404`, never a `403`. The account routes, photos, build files and `/health` need no session. Errors share one body, `{"error": {"code", "message", "field?"}}`.
 
 | Endpoint | What it does |
 | --- | --- |
 | `POST /v1/auth/register` | Makes an account from `email` and `password` (8 to 128 characters) and answers `201` with a session: `token`, `expiresAt` and `account`. `409 email_taken` if the email has one. |
-| `POST /v1/auth/login` | A new session, or `401 invalid_credentials`. After 10 failures for one email in 15 minutes, `429 rate_limited` with `Retry-After`. |
+| `POST /v1/auth/login` | A new session, or `401 invalid_credentials`. Both take an optional `deviceId`, the old `Legoin-Device-Id`, and move that device's scans from before accounts to the account, once. After 10 failures for one email in 15 minutes, `429 rate_limited` with `Retry-After`. |
 | `POST /v1/auth/logout` | Ends the session in `Authorization: Bearer`; always `204` |
 | `GET /v1/auth/me` | The session's account, or `401 unauthorized` |
 | `POST /v1/scan-jobs` | Uploads one photo (`multipart/form-data`, part `photo`, JPEG, PNG or WebP, up to 10 MB and 4096 × 4096 pixels) and answers `202` with a running job, or `503 unavailable` when the queue is full |
 | `GET /v1/scan-jobs/{jobId}` | The job: `running` with its stage (`detecting`, `classifying`, `coloring`), `done` with its scan, or `failed` with its error. Poll it every 500 ms. |
 | `DELETE /v1/scan-jobs/{jobId}` | Cancels the job; nothing is saved |
-| `GET /v1/scans` | This device's scans, newest first |
+| `GET /v1/scans` | This account's scans, newest first |
 | `GET /v1/scans/{scanId}` | One scan |
 | `PATCH /v1/scans/{scanId}/detections` | Corrections, all or nothing: `edit`, `remove`, `add`, `restore` |
 | `DELETE /v1/scans/{scanId}` | Deletes the scan, its photo and its ideas |
