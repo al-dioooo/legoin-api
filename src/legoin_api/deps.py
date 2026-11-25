@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, Request
 
+from legoin_api.builds import BuildLibrary
 from legoin_api.photos import PhotoStore
 from legoin_api.store import Store
 
@@ -28,6 +29,10 @@ def get_photos(request: Request) -> PhotoStore:
     return request.app.state.photos
 
 
+def get_builds(request: Request) -> BuildLibrary:
+    return request.app.state.builds
+
+
 class PhotoUrls:
     """Absolute photo URLs: from `LEGOIN_PUBLIC_URL` when set, else from the request."""
 
@@ -42,3 +47,4 @@ class PhotoUrls:
 StoreDep = Annotated[Store, Depends(get_store)]
 PhotosDep = Annotated[PhotoStore, Depends(get_photos)]
 PhotoUrlsDep = Annotated[PhotoUrls, Depends(PhotoUrls)]
+BuildsDep = Annotated[BuildLibrary, Depends(get_builds)]

@@ -52,9 +52,13 @@ class Settings(BaseSettings):
     cors_origins: str = DEFAULT_CORS_ORIGINS
     """Comma-separated origins allowed to call the API from a browser."""
 
+    builds_dir: Path = Path("builds")
+    """The library of checked builds: `manifest.json`, and each build's preview and model
+    (ADR-0010). Without it, ideas get no previews."""
+
     public_url: str | None = None
-    """The absolute base for `photo.src`, e.g. `https://api.example.com`. Unset, each answer
-    uses the URL its request came in on."""
+    """The absolute base for `photo.src` and previews, e.g. `https://api.example.com`. Unset,
+    each answer uses the URL its request came in on."""
 
     container: bool = False
     """Set by the Docker image, where the service is deployed: it warns at start-up about
