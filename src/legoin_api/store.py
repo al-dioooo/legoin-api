@@ -11,6 +11,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Protocol
 
 from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import ShownIdea
@@ -45,6 +46,14 @@ CREATE TABLE IF NOT EXISTS ideas_written (
 """
 
 
+class WireUrls(Protocol):
+    """What a scan needs to go on the wire: its photo's URL and its ideas' previews."""
+
+    def photo(self, name: str) -> str: ...
+
+    def with_previews(self, ideas: IdeaSet) -> IdeaSet: ...
+
+
 @dataclass(frozen=True)
 class StoredScan:
     id: str
@@ -57,16 +66,16 @@ class StoredScan:
     last_theme: Theme | None = None
     ideas: IdeaSet | None = None
 
-    def to_wire(self, photo_url: Callable[[str], str]) -> Scan:
+    def to_wire(self, urls: "WireUrls") -> Scan:
         return Scan(
             id=self.id,
             created_at=self.created_at,
             photo=Photo(
-                src=photo_url(self.photo_file), width=self.photo_width, height=self.photo_height
+                src=urls.photo(self.photo_file), width=self.photo_width, height=self.photo_height
             ),
             detections=self.detections,
             last_theme=self.last_theme,
-            ideas=self.ideas,
+            ideas=urls.with_previews(self.ideas) if self.ideas else None,
         )
 
     def with_changes(self, **changes) -> "StoredScan":

@@ -7,7 +7,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.types import Message, Receive
 
-from legoin_api.deps import DeviceId, PhotoUrlsDep, StoreDep
+from legoin_api.deps import DeviceId, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.jobs import JobManager, QueueFull
 from legoin_api.photos import MAX_PHOTO_BYTES, read_photo
@@ -114,7 +114,7 @@ async def create_scan_job(request: Request, device: DeviceId, jobs: JobsDep) -> 
 
 @router.get("/scan-jobs/{job_id}")
 def get_scan_job(
-    job_id: str, device: DeviceId, jobs: JobsDep, store: StoreDep, urls: PhotoUrlsDep
+    job_id: str, device: DeviceId, jobs: JobsDep, store: StoreDep, urls: PublicUrlsDep
 ) -> ScanJob:
     job = jobs.get(device, job_id)
     if job is None:

@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from starlette.concurrency import run_in_threadpool
 
-from legoin_api.deps import DeviceId, StoreDep
+from legoin_api.deps import DeviceId, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import IdeaGenerator, IdeasUnavailable
 from legoin_api.ideas.service import write_ideas
@@ -30,6 +30,7 @@ async def create_ideas(
     device: DeviceId,
     store: StoreDep,
     generator: GeneratorDep,
+    urls: PublicUrlsDep,
     request: Request,
 ) -> IdeaSet:
     scan = await run_in_threadpool(store.get_scan, device, scan_id)
@@ -51,15 +52,18 @@ async def create_ideas(
     kept = await run_in_threadpool(store.keep_ideas, device, scan_id, ideas, keys, inventory)
     if kept is None or kept.ideas is None:
         raise scan_not_found(scan_id)
-    return kept.ideas
+    return urls.with_previews(kept.ideas)
 
 
 @router.get("/scans/{scan_id}/ideas/{idea_id}")
-def get_idea(scan_id: str, idea_id: str, device: DeviceId, store: StoreDep) -> StoredIdea:
+def get_idea(
+    scan_id: str, idea_id: str, device: DeviceId, store: StoreDep, urls: PublicUrlsDep
+) -> StoredIdea:
     scan = store.get_scan(device, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
-    idea = next((i for i in scan.ideas.items if i.id == idea_id), None) if scan.ideas else None
-    if scan.ideas is None or idea is None:
+    ideas = urls.with_previews(scan.ideas) if scan.ideas else None
+    idea = next((i for i in ideas.items if i.id == idea_id), None) if ideas else None
+    if ideas is None or idea is None:
         raise ApiError("not_found", f"No idea {idea_id} in scan {scan_id}'s latest ideas.")
-    return StoredIdea(idea=idea, set=scan.ideas)
+    return StoredIdea(idea=idea, set=ideas)
