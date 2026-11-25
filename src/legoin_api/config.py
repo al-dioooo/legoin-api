@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     """The service's only state: the database, photos and downloaded models."""
 
+    model_tag: str = "v0.2.0"
+    """The legoin-ml release the models come from. Its files' hashes must be in `weights.py`."""
+
+    model_dir: Path | None = None
+    """Where model files are cached. Unset, `<data dir>/models`."""
+
+    torch_threads: int | None = None
+    """Threads torch may use. Unset, torch's default: one per core."""
+
     cors_origins: str = DEFAULT_CORS_ORIGINS
     """Comma-separated origins allowed to call the API from a browser."""
 
@@ -39,6 +48,10 @@ class Settings(BaseSettings):
 
     ideas_timeout_s: float = 30.0
     """A request for ideas still unanswered after this long fails with `504 timeout`."""
+
+    @property
+    def models_path(self) -> Path:
+        return self.model_dir or self.data_dir / "models"
 
     @property
     def cors_origin_list(self) -> list[str]:
