@@ -195,9 +195,9 @@ has already seen.
 # Checking the pieces
 
 The `cek_inventori` tool says which of a build's pieces the person owns and which are \
-missing. Before answering, call it once for each build, with the build's full parts list, \
-all in the same turn. If a build is missing pieces that something they own could replace, \
-change it, then answer.
+missing. Before answering, call it once for each build, library builds included, with the \
+build's full parts list, all in the same turn. You get that one turn of tool calls. If a \
+build is missing pieces that something they own could replace, change it, then answer.
 
 # Example
 

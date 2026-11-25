@@ -4,7 +4,7 @@ One request for ideas is a short conversation:
 
 1. Claude gets the cached system prompt and the request (`prompt.py`), and answers in the
    structured-output shape `ideas_schema`. It may call `cek_inventori`, a strict tool, for
-   at most `MAX_TOOL_ROUNDS` rounds; the last request then offers no tools.
+   `MAX_TOOL_ROUNDS` round; the next request then offers no tools.
 2. Each build is checked: its slot's theme, a title, a summary, steps, and only catalogue
    parts and colors with quantities of 1 or more. Builds that fail get one repair request.
    A build Claude picked from the library (ADR-0010) by its `buildId` takes the library
@@ -52,7 +52,10 @@ MAX_RETRIES = 1
 MAX_TOKENS = 8000
 """Room for adaptive thinking and three builds; an answer cut off here falls back."""
 
-MAX_TOOL_ROUNDS = 3
+MAX_TOOL_ROUNDS = 1
+"""One turn of `cek_inventori` calls, then the answer: two API calls, inside the 10 s budget.
+A second round cost about 4 s in two of three requests measured with the library in the
+prompt; the service runs `cek_inventori` on every final build anyway."""
 MAX_STEPS = 8
 MAX_QUANTITY = 50
 
