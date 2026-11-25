@@ -1,15 +1,17 @@
-"""The picture agent: Claude designs a build of a picture by calling strict tools, and this code
-applies each call to a `Build` and checks it with BrickLayer. No model-written code runs.
+"""The build agent: Claude designs a build from a scan's pieces by calling strict tools, and this
+code applies each call to a `Build` and checks it with BrickLayer. No model-written code runs.
 
-One job is a conversation. Claude gets the cached system prompt (`prompt.py`) and the picture,
-then calls `place_pieces`, `remove_pieces`, `validate`, `render`, and at last `finish` or
-`reject_picture`. `finish` only takes a build that passes BrickLayer's checks and that Claude
-has looked at in a render since its last change, as BrickWright asks its agents to.
+One build is a conversation (ADR-0013). Claude gets the cached system prompt (`prompt.py`), the
+scan's photo and its pieces, and what to build. It calls `place_pieces`, `remove_pieces`,
+`validate`, `render`, and at last `finish`. `place_pieces` refuses any piece the scan didn't
+find, or one more than it counted. `finish` only takes a build that passes BrickLayer's checks
+and that Claude has looked at in a render since its last change, as BrickWright asks its
+agents to.
 
 **Caps.** Before every API call, the worst that call could cost (its input as large as the last
 one plus 4,000 tokens, all of it written to the cache, and `MAX_TOKENS` of output) has to fit
 under the job's cost cap, and the job has to be under its call and time caps. A cap that's hit
-ends the job with the last valid build Claude made, under a plain title and plain steps, or
+ends the build with the last valid one Claude made, under a plain title and plain steps, or
 fails it with `no_valid_build`.
 
 Claude and the BrickLayer checks and renders are passed in, so tests run with fakes.
@@ -35,14 +37,14 @@ from legoin_api.picture.grid import (
     size_of,
 )
 from legoin_api.picture.pricing import cost_of, worst_case
-from legoin_api.picture.prompt import SYSTEM, TOOLS, VIEWS, idea_text, request_text
+from legoin_api.picture.prompt import SYSTEM, TOOLS, VIEWS, BuildBrief, brief_text, pieces_text
 from legoin_api.schemas import Locale, PartCount
 
 log = logging.getLogger(__name__)
 
-MAX_TOKENS = 8000
+MAX_TOKENS = 4000
 """Per API call: room for a turn's thinking and a batch of pieces. A turn cut off here is told
-to place smaller batches."""
+to place smaller batches. It also bounds each call's worst case, and so the cap a build needs."""
 PICTURE_MAX_SIDE = 1024
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 MAX_TITLE = 60
@@ -75,15 +77,12 @@ class Caps:
     max_seconds: float = 300.0
 
 
-Code = Literal[
-    "finished", "picture_unusable", "picture_refused", "no_valid_build", "max_calls", "max_cost",
-    "max_seconds",
-]  # fmt: skip
+Code = Literal["finished", "refused", "no_valid_build", "max_calls", "max_cost", "max_seconds"]
 
 
 @dataclass
 class Outcome:
-    """How a job ended. `done` carries a build; `failed` carries a code."""
+    """How a build ended. `done` carries a build; `failed` carries a code."""
 
     status: Literal["done", "failed"]
     code: Code
@@ -128,19 +127,12 @@ def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode()
 
 
-IDEA_MAX_PIECES = 20
-"""An idea's preview stays small: at most twice the pieces the idea lists, and this many."""
-IDEA_MIN_LIMIT = 6
-
-
-@dataclass(frozen=True)
-class IdeaBrief:
-    """What an idea's preview is built from: the idea as Claude wrote it."""
-
-    title: str
-    summary: str
-    steps: list[str]
-    parts: list[PartCount]
+def difficulty_of(pieces: int) -> str:
+    """An idea's difficulty, from its piece count: like the library's builds, which are easy
+    up to 8 pieces."""
+    if pieces <= 8:
+        return "easy"
+    return "medium" if pieces <= 16 else "hard"
 
 
 class PictureAgent:
@@ -174,21 +166,32 @@ class PictureAgent:
         """Hears each response and its cost, e.g. to record spend; may raise to stop."""
         self.clock = clock
 
-    def run(self, picture: bytes, locale: Locale) -> Outcome:
-        """Designs a build of the picture."""
-        content = [picture_block(picture), {"type": "text", "text": request_text(locale)}]
-        return _Run(self, content, locale, Build()).run()
+    def run_scan(
+        self, photo: bytes, pieces: list[PartCount], brief: BuildBrief, locale: Locale
+    ) -> Outcome:
+        """Designs one build from a scan's pieces: the kind of thing `brief` asks for, from only
+        those pieces, within their counts."""
+        return _Run(
+            self, scan_content(photo, pieces, brief, locale), locale, build_for(pieces, brief)
+        ).run()
 
-    def run_idea(self, idea: IdeaBrief, locale: Locale) -> Outcome:
-        """Builds an idea's preview, from its own part and color pairs only. The idea's title
-        stays; the summary and steps are Claude's, to match the build."""
-        listed = sum(line.quantity for line in idea.parts)
-        limit = min(IDEA_MAX_PIECES, max(IDEA_MIN_LIMIT, 2 * listed))
-        build = Build(
-            allowed=frozenset((line.part, line.color) for line in idea.parts), max_pieces=limit
-        )
-        content = [{"type": "text", "text": idea_text(idea, locale, limit)}]
-        return _Run(self, content, locale, build, title=idea.title).run()
+
+def scan_content(
+    photo: bytes, pieces: list[PartCount], brief: BuildBrief, locale: Locale
+) -> list[dict]:
+    """The first message of a build: the photo and the pieces, which every build of the scan
+    shares and which end at a cache breakpoint, then what to build."""
+    limit = build_for(pieces, brief).max_pieces
+    return [
+        picture_block(photo),
+        {"type": "text", "text": pieces_text(pieces), "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": brief_text(brief, locale, limit)},
+    ]
+
+
+def build_for(pieces: list[PartCount], brief: BuildBrief) -> Build:
+    total = sum(line.quantity for line in pieces)
+    return Build(stock=pieces, max_pieces=min(brief.max_pieces, total))
 
 
 class _Run:
@@ -198,14 +201,11 @@ class _Run:
         content: list[dict],
         locale: Locale,
         build: Build,
-        title: str | None = None,
     ):
         self.agent = agent
         self.locale = locale
         self.started = agent.clock()
         self.build = build
-        self.title = title
-        """An idea's title, which the build keeps."""
         self.outcome = Outcome(status="failed", code="no_valid_build")
         self.messages: list[dict] = [{"role": "user", "content": content}]
         self.last_input = 0
@@ -224,7 +224,7 @@ class _Run:
             if stop == "refusal":
                 details = getattr(response, "stop_details", None)
                 log.info("Claude declined (%s)", getattr(details, "category", None))
-                return self._end("failed", "picture_refused")
+                return self._end("failed", "refused")
             calls = [block for block in response.content if block.type == "tool_use"]
             if stop == "max_tokens" or (stop == "tool_use" and not calls):
                 self._say(
@@ -343,10 +343,6 @@ class _Run:
             return self._render(args.get("view"), turn)
         if name == "finish":
             return self._finish(args, turn)
-        if name == "reject_picture":
-            code = "picture_unusable" if args.get("reason") == "no_subject" else "picture_refused"
-            turn.ended = self._end("failed", code)
-            return "Ended.", False
         return f"There's no tool {name!r}.", True
 
     def _report(self) -> dict:
@@ -365,6 +361,8 @@ class _Run:
             "turnsLeft": left,
             "list": [piece.describe() for piece in pieces],
         }
+        if self.build.stock is not None:
+            report["left"] = self.build.left()
         if left <= NEAR_THE_END:
             report["note"] = "Almost out of turns: fix what's left and finish now."
         return report
@@ -385,7 +383,7 @@ class _Run:
 
     def _finish(self, args: dict, turn: _Turn) -> tuple[Any, bool]:
         pieces = self.build.snapshot()
-        title = self.title or str(args.get("title") or "").strip()
+        title = str(args.get("title") or "").strip()
         summary = str(args.get("summary") or "").strip()
         steps = [str(step).strip() for step in args.get("steps") or [] if str(step).strip()]
         problems = self._report()["problems"]
@@ -397,8 +395,8 @@ class _Run:
             problems.append(f"it needs 2 to {MAX_STEPS} steps")
         if not problems and self.seen != pieces:
             problems.append(
-                "look at a render of the build as it is now first: call render, compare it "
-                "with the picture, then finish in a later turn"
+                "look at a render of the build as it is now first: call render, check it reads "
+                "as what you meant, then finish in a later turn"
             )
         if problems:
             return json.dumps({"finished": False, "problems": problems}), True
@@ -408,13 +406,10 @@ class _Run:
     # Endings
 
     def _end_with_last_valid(self, cap: Code) -> Outcome:
-        log.info(
-            "Picture job hit %s after %d calls, $%.3f", cap, self.outcome.calls, self.outcome.cost
-        )
+        log.info("A build hit %s after %d calls, $%.3f", cap, self.outcome.calls, self.outcome.cost)
         if not self.last_valid:
             return self._end("failed", "no_valid_build")
         title, summary = plain_text(self.last_valid, self.locale)
-        title = self.title or title
         steps = layer_steps(self.last_valid, self.locale)
         return self._end("done", cap, self.last_valid, title, summary, steps, "plain")
 
