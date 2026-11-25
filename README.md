@@ -139,7 +139,7 @@ Every route needs a `Legoin-Device-Id` header, the contract's placeholder for ac
 | `GET /v1/builds/{buildId}/model.ldr` | A library build's LDraw model, as a download, cached the same way |
 | `GET /health` | `{"status": "ok", "version", "pipeline", "modelTag"?, "ideas", "ideasModel"?}`, for a host's health check |
 
-Ideas that are a library build carry its `buildId` and `preview` (ADR-0010): every template idea does. A set is kept with each idea's `buildId` only; `preview` is worked out on the way out, from `LEGOIN_PUBLIC_URL` and the files' versions.
+Ideas that are a library build carry its `buildId` and `preview` (ADR-0010): every template idea does, and so does a Claude idea when Claude picks a library build. Claude's cached prompt lists each build's id, title and parts; when the person's pieces fit one, it can answer a slot with that `buildId`, and the service uses the build's own text, steps and parts, still runs `cek_inventori`, and adds `preview`. Claude's own builds have no picture. A set is kept with each idea's `buildId` only; `preview` is worked out on the way out, from `LEGOIN_PUBLIC_URL` and the files' versions.
 
 `tests/contract/` holds the contract's own example bodies, and the tests check the API against them.
 
