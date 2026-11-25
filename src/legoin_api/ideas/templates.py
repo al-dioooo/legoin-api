@@ -1,8 +1,10 @@
 """legoin-web's 18 idea templates, six per theme, in English and Indonesian.
 
-Copied from `IDEA_TEMPLATES` in legoin-web's `src/lib/mock/fixtures.ts` at `a05024d`. They stand in
-for the AI agent until an LLM provider is chosen (contract open question 1). Each lists every
-part the build needs; `cek_inventori` splits that into `used` and `missing` at request time.
+First copied from `IDEA_TEMPLATES` in legoin-web's `src/lib/mock/fixtures.ts` at `a05024d`. Each
+now matches its checked build in `builds/` (ADR-0010): the same theme, difficulty, text and
+parts, which `tests/test_builds.py` checks. Each lists every part the build needs;
+`cek_inventori` splits that into `used` and `missing` at request time. They're Claude's
+fallback (ADR-0009).
 """
 
 TEMPLATES: list[dict] = [
@@ -17,14 +19,14 @@ TEMPLATES: list[dict] = [
         },
         "steps": {
             "en": [
-                "Put the red 2×4 brick on a black 2×4 plate as the body.",
-                "Add the green 2×2 slope at the front as the hood.",
-                "Add the black 2×2 brick at the back and two yellow 1×1 rounds as lights.",
+                "Put the red 2×4 brick on the black 2×4 plate, one stud back, so the plate's front row shows.",
+                "Add the green 2×2 slope on the front of the red brick as the hood, and the black 2×2 brick behind it as the cab.",
+                "Put the two yellow 1×1 rounds on the plate's front row as headlights.",
             ],
             "id": [
-                "Pasang brick 2×4 merah di atas plate 2×4 hitam sebagai badan.",
-                "Taruh slope 2×2 hijau di depan sebagai kap mesin.",
-                "Tambahkan brick 2×2 hitam di belakang dan dua round 1×1 kuning sebagai lampu.",
+                "Pasang brick 2×4 merah di atas plate 2×4 hitam, mundur satu stud, supaya baris depan plate kelihatan.",
+                "Taruh slope 2×2 hijau di depan brick merah sebagai kap mesin, dan brick 2×2 hitam di belakangnya sebagai kabin.",
+                "Pasang dua round 1×1 kuning di baris depan plate sebagai lampu depan.",
             ],
         },
         "requires": [
@@ -181,19 +183,20 @@ TEMPLATES: list[dict] = [
         "steps": {
             "en": [
                 "Use the yellow 2×4 brick as the body.",
-                "Stack the yellow 2×2 brick at one end as the head.",
-                "Add the orange 1×2 brick at the front of the head as the beak.",
+                "Put the orange 2×2 plate on its front end, sticking out one stud, as the beak, and the yellow 1×2 plate right behind it.",
+                "Put the yellow 2×2 brick on the back of the beak and the yellow plate as the head.",
             ],
             "id": [
                 "Pakai brick 2×4 kuning sebagai badan.",
-                "Tumpuk brick 2×2 kuning di salah satu ujung sebagai kepala.",
-                "Pasang brick 1×2 oranye di depan kepala sebagai paruh.",
+                "Pasang plate 2×2 oranye di ujung depan, menjorok satu stud, sebagai paruh, lalu plate 1×2 kuning tepat di belakangnya.",
+                "Pasang brick 2×2 kuning di atas bagian belakang paruh dan plate kuning sebagai kepala.",
             ],
         },
         "requires": [
-            {"part": "brick-2x4", "color": "yellow", "quantity": 1},
             {"part": "brick-2x2", "color": "yellow", "quantity": 1},
-            {"part": "brick-1x2", "color": "orange", "quantity": 1},
+            {"part": "brick-2x4", "color": "yellow", "quantity": 1},
+            {"part": "plate-1x2", "color": "yellow", "quantity": 1},
+            {"part": "plate-2x2", "color": "orange", "quantity": 1},
         ],
     },
     {
@@ -345,19 +348,22 @@ TEMPLATES: list[dict] = [
         },
         "steps": {
             "en": [
-                "Stack two white 2×4 bricks as the walls.",
-                "Put two red 2×2 slopes on top as the roof.",
-                "Add a light gray 1×2 tile in front as the door step.",
+                "Lay the green 2×4 plate down as the lawn.",
+                "Stack two white 2×4 bricks on it, one stud back, as the walls.",
+                "Put two red 2×2 slopes on top, back to back, as the roof.",
+                "Add the light gray 1×2 tile on the lawn's front row as the door step.",
             ],
             "id": [
-                "Tumpuk dua brick 2×4 putih sebagai dinding.",
-                "Pasang dua slope 2×2 merah di atasnya sebagai atap.",
-                "Tambahkan tile 1×2 abu-abu terang di depan sebagai anak tangga.",
+                "Letakkan plate 2×4 hijau sebagai halaman.",
+                "Tumpuk dua brick 2×4 putih di atasnya, mundur satu stud, sebagai dinding.",
+                "Pasang dua slope 2×2 merah di atasnya, saling membelakangi, sebagai atap.",
+                "Tambahkan tile 1×2 abu-abu terang di baris depan halaman sebagai anak tangga.",
             ],
         },
         "requires": [
             {"part": "brick-2x4", "color": "white", "quantity": 2},
             {"part": "slope-2x2", "color": "red", "quantity": 2},
+            {"part": "plate-2x4", "color": "green", "quantity": 1},
             {"part": "tile-1x2", "color": "light-gray", "quantity": 1},
         ],
     },
