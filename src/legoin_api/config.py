@@ -25,21 +25,11 @@ class IdeasGeneratorKind(StrEnum):
     TEMPLATES = "templates"
 
 
-class PictureBuildsKind(StrEnum):
-    """Whether picture builds (ADR-0012) run, and with whom."""
+class ScanBuildsKind(StrEnum):
+    """Whether Claude builds a scan's ideas from its photo and pieces (ADR-0013), and who."""
 
     OFF = "off"
     ANTHROPIC = "anthropic"
-
-
-class IdeaPreviewMode(StrEnum):
-    """When ideas Claude wrote get a preview built (ADR-0012, "Idea previews")."""
-
-    ALL = "all"
-    """All three, as soon as the ideas are answered."""
-    ON_OPEN = "on_open"
-    """Only when someone opens that idea's page."""
-    OFF = "off"
 
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
@@ -110,56 +100,43 @@ class Settings(BaseSettings):
     """How hard Claude thinks. Always sent, since the models' own defaults differ; `low` is the
     fastest."""
 
-    picture_builds: PictureBuildsKind = PictureBuildsKind.OFF
-    """Picture builds run only when this is `anthropic`, `ANTHROPIC_API_KEY` is set, the
-    `picture` extra is installed and the LDraw parts library is found (ADR-0012)."""
+    scan_builds: ScanBuildsKind = ScanBuildsKind.OFF
+    """Claude builds a scan's ideas from its photo and pieces only when this is `anthropic`,
+    `ANTHROPIC_API_KEY` is set, the `picture` extra is installed and the LDraw parts library is
+    found (ADR-0013). Otherwise, and whenever builds can't run, ideas are written as before."""
 
-    picture_model: str = "claude-opus-5-5"
-    """The Claude model that designs picture builds. Opus 5.5 made the more faithful builds in
-    the spike, at about $0.14 each; `claude-sonnet-5-5` costs about $0.05."""
+    scan_build_model: str = "claude-opus-5-5"
+    """The Claude model that builds. Opus 5.5 made the more faithful builds in the spikes."""
 
-    picture_effort: Effort = "medium"
+    scan_build_effort: Effort = "medium"
 
-    picture_daily_budget_usd: float = Field(3.0, ge=0)
-    """Dollars a day (UTC) for every picture job together, counted from real usage."""
+    scan_build_daily_budget_usd: float = Field(3.0, ge=0)
+    """Dollars a day (UTC) for every build together, counted from real usage."""
 
-    picture_daily_limit: int = Field(2, ge=0)
-    """Picture jobs each account may start a day (UTC)."""
+    scan_build_daily_sets: int = Field(3, ge=0)
+    """Sets of builds each account may start a day (UTC). Past it, ideas are written as text."""
 
-    picture_job_cost_usd: float = Field(0.50, gt=0)
-    """Dollars one picture job may spend. Each job reserves this much of the daily budget."""
+    scan_build_cost_usd: float = Field(0.35, gt=0)
+    """Dollars one build may spend. A set reserves this much of the daily budget per build."""
 
-    picture_job_seconds: float = Field(300.0, gt=0)
-    """Seconds one picture job may design for. The worker is killed a minute after that."""
+    scan_build_seconds: float = Field(150.0, gt=0)
+    """Seconds one build may design for. The worker is killed a minute after that."""
 
-    picture_job_calls: int = Field(24, ge=1)
-    """Claude API calls one picture job may make."""
+    scan_build_calls: int = Field(12, ge=1)
+    """Claude API calls one build may make."""
 
-    picture_queue_size: int = Field(3, ge=1)
-    """Picture jobs waiting or running. Beyond it, an upload answers `503 unavailable`."""
+    scan_build_max_pieces: int = Field(40, ge=3, le=60)
+    """The most pieces one build may use, besides what the scan found."""
 
-    picture_worker_memory_mb: int = Field(1024, ge=256)
-    """The picture worker's resident memory; past it, the worker is killed."""
+    scan_build_stagger_s: float = Field(5.0, ge=0)
+    """How long each build of a set after the first waits to start. The first one's request has
+    then cached the photo and the pieces, which the others read instead of writing again."""
 
-    idea_previews: IdeaPreviewMode = IdeaPreviewMode.ALL
-    """Previews of the ideas Claude writes, built by the picture engine. They also need Claude
-    ideas, the key, the `picture` extra and the LDraw parts library."""
+    scan_build_queue_size: int = Field(3, ge=1)
+    """Sets of builds waiting or running. Past it, ideas are written as text."""
 
-    idea_preview_model: str = "claude-opus-5-5"
-    """Opus 5.5 made the more faithful previews in the spike, at about $0.04 each."""
-
-    idea_preview_effort: Effort = "medium"
-
-    idea_preview_daily_limit: int = Field(9, ge=0)
-    """Previews each account may start a day (UTC): three sets of ideas with `all`."""
-
-    idea_preview_cost_usd: float = Field(0.25, gt=0)
-    """Dollars one preview may spend. It reserves this much of the picture builds' daily
-    budget, which previews share, while it waits or runs."""
-
-    idea_preview_seconds: float = Field(120.0, gt=0)
-
-    idea_preview_calls: int = Field(10, ge=1)
+    scan_build_worker_memory_mb: int = Field(1024, ge=256)
+    """The build worker's resident memory; past it, the worker is killed."""
 
     @model_validator(mode="after")
     def _one_worker_for_the_models(self) -> "Settings":

@@ -17,10 +17,9 @@ def health(request: Request) -> dict[str, str]:
     answer["ideas"] = settings.ideas_kind
     if settings.ideas_kind == "anthropic":
         answer["ideasModel"] = settings.ideas_model
-    # Whether picture jobs are accepted: configured, and everything they need is here.
-    jobs = getattr(request.app.state, "picture_jobs", None)
-    answer["pictureBuilds"] = "anthropic" if jobs and jobs.enabled else "off"
-    if answer["pictureBuilds"] == "anthropic":
-        answer["pictureModel"] = settings.picture_model
-    answer["ideaPreviews"] = settings.idea_previews if jobs and jobs.previews_on else "off"
+    # Whether Claude builds ideas from scans: configured, and everything it needs is here.
+    jobs = getattr(request.app.state, "build_jobs", None)
+    answer["scanBuilds"] = "anthropic" if jobs and jobs.enabled else "off"
+    if answer["scanBuilds"] == "anthropic":
+        answer["scanBuildModel"] = settings.scan_build_model
     return answer
