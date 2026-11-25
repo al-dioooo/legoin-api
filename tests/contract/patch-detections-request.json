@@ -1,0 +1,15 @@
+{
+  "changes": [
+    {
+      "type": "edit",
+      "id": "det_a3",
+      "color": "black"
+    },
+    {
+      "type": "add",
+      "part": "plate-1x2",
+      "color": "blue",
+      "quantity": 1
+    }
+  ]
+}
