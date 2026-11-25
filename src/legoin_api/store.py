@@ -1,8 +1,12 @@
-"""Scans in SQLite, keyed by the device that made them.
+"""Accounts, sessions and scans in SQLite.
 
 One connection, guarded by a lock: the API's request threads and the scan worker share it,
 and every change is a short transaction. Detections and the latest idea set are stored as
 JSON in the scan's row, since they're always read and written with the scan.
+
+The file's `user_version` is its schema's version. Version 1 (ADR-0008) kept scans by device
+only; version 2 (ADR-0011) adds accounts and sessions, and a scan's device id becomes optional:
+it's kept only until an account claims the scan. An older file is migrated on start.
 """
 
 import json
@@ -19,10 +23,34 @@ from legoin_api.ids import utc_now
 from legoin_api.inventory import recheck, to_inventory
 from legoin_api.schemas import Detection, IdeaSet, PartCount, Photo, Scan, Theme
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS scans (
+SCHEMA_VERSION = 2
+
+ACCOUNTS = """
+CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
-    device_id TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- Only a SHA-256 of each token, so a copy of the file can't be used to log in.
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_by_account ON sessions (account_id);
+"""
+
+
+def _scans_table(name: str) -> str:
+    """The scans table: an account's, or a device's until an account claims it."""
+    return f"""
+CREATE TABLE {name} (
+    id TEXT PRIMARY KEY,
+    account_id TEXT REFERENCES accounts (id),
+    device_id TEXT,
     created_at TEXT NOT NULL,
     photo_file TEXT NOT NULL,
     photo_width INTEGER NOT NULL,
@@ -31,8 +59,15 @@ CREATE TABLE IF NOT EXISTS scans (
     last_theme TEXT,
     ideas TEXT
 );
-CREATE INDEX IF NOT EXISTS scans_by_device ON scans (device_id, created_at);
+"""
 
+
+SCAN_INDEXES = """
+CREATE INDEX IF NOT EXISTS scans_by_account ON scans (account_id, created_at);
+CREATE INDEX IF NOT EXISTS scans_by_device ON scans (device_id, created_at);
+"""
+
+IDEAS_WRITTEN = """
 -- Every idea written for a scan, not only the latest set, so `exclude` can name older ones.
 CREATE TABLE IF NOT EXISTS ideas_written (
     scan_id TEXT NOT NULL REFERENCES scans (id) ON DELETE CASCADE,
@@ -44,6 +79,57 @@ CREATE TABLE IF NOT EXISTS ideas_written (
     PRIMARY KEY (scan_id, idea_id)
 );
 """
+
+SCAN_COLUMNS = (
+    "id, account_id, device_id, created_at, photo_file, photo_width, photo_height,"
+    " detections, last_theme, ideas"
+)
+
+MIGRATE_FROM_1 = f"""
+BEGIN;
+{ACCOUNTS}
+{_scans_table("scans_v2")}
+INSERT INTO scans_v2 ({SCAN_COLUMNS})
+    SELECT id, NULL, device_id, created_at, photo_file, photo_width, photo_height,
+        detections, last_theme, ideas
+    FROM scans;
+DROP TABLE scans;
+ALTER TABLE scans_v2 RENAME TO scans;
+{SCAN_INDEXES}
+PRAGMA user_version = {SCHEMA_VERSION};
+COMMIT;
+"""
+"""SQLite can't make a column optional in place, so the scans table is copied, as its
+documentation's twelve steps do it. Foreign keys are off meanwhile, so dropping the old table
+doesn't take the scans' ideas with it."""
+
+
+def _migrate(db: sqlite3.Connection) -> None:
+    """Brings the file to `SCHEMA_VERSION`: a new file gets every table, a version 1 file is
+    copied over, in one transaction."""
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version >= SCHEMA_VERSION:
+        return
+    has_scans = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scans'"
+    ).fetchone()
+    if not has_scans:
+        db.executescript(
+            f"BEGIN; {ACCOUNTS} {_scans_table('scans')} {SCAN_INDEXES} {IDEAS_WRITTEN}"
+            f" PRAGMA user_version = {SCHEMA_VERSION}; COMMIT;"
+        )
+        return
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        db.executescript(MIGRATE_FROM_1)
+    except BaseException:
+        if db.in_transaction:
+            db.execute("ROLLBACK")
+        raise
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
+    if db.execute("PRAGMA foreign_key_check").fetchone():
+        raise RuntimeError("Migrating the scans table left a dangling foreign key.")
 
 
 class WireUrls(Protocol):
@@ -112,7 +198,7 @@ class Store:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode = WAL")
         self._db.execute("PRAGMA foreign_keys = ON")
-        self._db.executescript(SCHEMA)
+        _migrate(self._db)
 
     def close(self) -> None:
         with self._lock:
@@ -121,7 +207,7 @@ class Store:
     def insert_scan(self, scan: StoredScan) -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO scans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO scans ({SCAN_COLUMNS}) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     scan.id,
                     scan.device_id,
