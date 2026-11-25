@@ -1,0 +1,63 @@
+"""Ideas: three builds for a scan, and one idea read back (contract section 5)."""
+
+import asyncio
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request
+from starlette.concurrency import run_in_threadpool
+
+from legoin_api.deps import DeviceId, StoreDep
+from legoin_api.errors import ApiError
+from legoin_api.ideas.generator import IdeaGenerator, IdeasUnavailable
+from legoin_api.ideas.service import write_ideas
+from legoin_api.routes.scans import scan_not_found
+from legoin_api.schemas import IdeaSet, IdeasRequest, StoredIdea
+
+router = APIRouter(prefix="/v1", tags=["ideas"])
+
+
+def get_generator(request: Request) -> IdeaGenerator:
+    return request.app.state.ideas
+
+
+GeneratorDep = Annotated[IdeaGenerator, Depends(get_generator)]
+
+
+@router.post("/scans/{scan_id}/ideas")
+async def create_ideas(
+    scan_id: str,
+    body: IdeasRequest,
+    device: DeviceId,
+    store: StoreDep,
+    generator: GeneratorDep,
+    request: Request,
+) -> IdeaSet:
+    scan = await run_in_threadpool(store.get_scan, device, scan_id)
+    if scan is None:
+        raise scan_not_found(scan_id)
+    written = await run_in_threadpool(store.written_ideas, device, scan_id)
+    timeout = request.app.state.settings.ideas_timeout_s
+    try:
+        async with asyncio.timeout(timeout):
+            ideas, keys, inventory = await write_ideas(generator, scan, body, written)
+    except TimeoutError as error:
+        raise ApiError("timeout", f"Writing ideas took over {timeout:g} seconds.") from error
+    except IdeasUnavailable as error:
+        raise ApiError(
+            "unavailable", "The idea writer is unavailable.", headers={"Retry-After": "10"}
+        ) from error
+    # A request that fails changes nothing; only now is the set kept.
+    if await run_in_threadpool(store.keep_ideas, device, scan_id, ideas, keys, inventory) is None:
+        raise scan_not_found(scan_id)
+    return ideas
+
+
+@router.get("/scans/{scan_id}/ideas/{idea_id}")
+def get_idea(scan_id: str, idea_id: str, device: DeviceId, store: StoreDep) -> StoredIdea:
+    scan = store.get_scan(device, scan_id)
+    if scan is None:
+        raise scan_not_found(scan_id)
+    idea = next((i for i in scan.ideas.items if i.id == idea_id), None) if scan.ideas else None
+    if scan.ideas is None or idea is None:
+        raise ApiError("not_found", f"No idea {idea_id} in scan {scan_id}'s latest ideas.")
+    return StoredIdea(idea=idea, set=scan.ideas)
