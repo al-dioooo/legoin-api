@@ -69,6 +69,7 @@ def create_app(
         # Until an LLM provider is chosen (contract open question 1).
         app.state.ideas = idea_generator or TemplateIdeaGenerator()
         yield
+        # The worker first, so no job writes to a closed store.
         app.state.jobs.shutdown()
         app.state.store.close()
 

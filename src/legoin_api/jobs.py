@@ -21,7 +21,7 @@ import math
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -38,6 +38,9 @@ log = logging.getLogger(__name__)
 
 KEEP_ENDED_JOBS_S = 600.0
 """The contract keeps an ended job for at least 10 minutes."""
+
+SHUTDOWN_WAIT_S = 5.0
+"""How long shutting down waits for a running job to stop; a stage takes well under 1 s."""
 
 
 @dataclass
@@ -99,12 +102,24 @@ class JobManager:
         self.queue_size = queue_size
         self.clock = clock
         self._queued = 0
+        self._closing = False
+        self._running_futures: set[Future] = set()
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="scan")
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout_s: float = SHUTDOWN_WAIT_S) -> None:
+        """Cancels waiting jobs and waits for running ones, which stop at their next stage and
+        save nothing. Call it before closing the store, so no job writes to a closed one."""
+        with self._lock:
+            self._closing = True
+            futures = set(self._running_futures)
         self._executor.shutdown(wait=False, cancel_futures=True)
+        # `wait` never counts a future cancelled that way as done, so leave those out.
+        running = {future for future in futures if not future.cancelled()}
+        _, still_running = wait(running, timeout=timeout_s)
+        if still_running:
+            log.warning("Shutting down with %d scan job(s) still running", len(still_running))
 
     def reserve(self) -> None:
         """Takes a place in the queue for a photo about to be read, or raises `QueueFull`.
@@ -132,14 +147,21 @@ class JobManager:
             self._jobs[job.id] = job
             view = replace(job, image=None)
         try:
-            self._executor.submit(self._run, job)
+            future = self._executor.submit(self._run, job)
         except BaseException:
             with self._lock:
                 self._jobs.pop(job.id, None)
             if not reserved:
                 self.release()
             raise
+        with self._lock:
+            self._running_futures.add(future)
+        future.add_done_callback(self._forget_future)
         return view
+
+    def _forget_future(self, future: Future) -> None:
+        with self._lock:
+            self._running_futures.discard(future)
 
     def get(self, device_id: str, job_id: str) -> Job | None:
         """A copy of the job as it is now, or None if this device has no such job."""
@@ -244,7 +266,7 @@ class JobManager:
     # Under the lock
 
     def _running(self, job: Job) -> bool:
-        return not job.cancelled and not self._check_deadline(job)
+        return not self._closing and not job.cancelled and not self._check_deadline(job)
 
     def _check_deadline(self, job: Job) -> bool:
         """Ends a job that ran out of time. True once the job has ended, for any reason."""
