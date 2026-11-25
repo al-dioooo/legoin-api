@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from conftest import DEVICE
 
 from legoin_api.accounts import MAX_FAILED_LOGINS, token_hash
 
@@ -201,3 +202,43 @@ def test_an_old_hash_is_redone_on_log_in(client):
     store.set_password_hash(account.id, old)
     assert log_in(client).status_code == 200
     assert store.account_by_email(EMAIL).password_hash != old
+
+
+def put_device_scan(client, scan_id: str, device: str = DEVICE) -> None:
+    """A scan as it was saved before accounts: by its device, with no account."""
+    client.app.state.store._db.execute(
+        "INSERT INTO scans (id, device_id, created_at, photo_file, photo_width, photo_height,"
+        " detections) VALUES (?, ?, '2026-11-09T03:12:45.120Z', 'a.jpg', 10, 10, '[]')",
+        (scan_id, device),
+    )
+
+
+@pytest.mark.parametrize("route", [register, log_in])
+def test_scans_from_before_accounts_move_to_the_account(client, route):
+    if route is log_in:
+        register(client)
+    put_device_scan(client, "scn_mine")
+    put_device_scan(client, "scn_theirs", device="another-device")
+
+    session = route(client, deviceId=DEVICE).json()
+
+    scans = client.get("/v1/scans", headers=bearer(session["token"])).json()["scans"]
+    assert [scan["id"] for scan in scans] == ["scn_mine"]
+
+
+def test_a_moved_scan_never_moves_again(client):
+    put_device_scan(client, "scn_mine")
+    first = register(client, deviceId=DEVICE).json()
+    second = register(client, email="budi@example.com", deviceId=DEVICE).json()
+
+    assert len(client.get("/v1/scans", headers=bearer(first["token"])).json()["scans"]) == 1
+    assert client.get("/v1/scans", headers=bearer(second["token"])).json() == {"scans": []}
+
+
+def test_a_failed_log_in_moves_nothing(client):
+    register(client)
+    put_device_scan(client, "scn_mine")
+    assert log_in(client, password="wrong-password", deviceId=DEVICE).status_code == 401
+
+    session = log_in(client).json()
+    assert client.get("/v1/scans", headers=bearer(session["token"])).json() == {"scans": []}

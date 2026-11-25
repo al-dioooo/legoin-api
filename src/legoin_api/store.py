@@ -412,3 +412,14 @@ class Store:
     def delete_session(self, token_hash: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+    def claim_device_scans(self, device_id: str, account_id: str) -> int:
+        """Moves the scans saved under a device id before accounts, that no account has yet,
+        to this account (ADR-0011). Answers how many moved."""
+        with self._lock:
+            moved = self._db.execute(
+                "UPDATE scans SET account_id = ?, device_id = NULL"
+                " WHERE device_id = ? AND account_id IS NULL",
+                (account_id, device_id),
+            )
+        return moved.rowcount
