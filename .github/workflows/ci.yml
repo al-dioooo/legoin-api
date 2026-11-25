@@ -1,0 +1,42 @@
+name: CI
+
+# Every pull request, including stacked ones that target another PR's branch.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to the same PR cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.13.6"
+          python-version: "3.12"
+
+      # The locked base and dev dependencies only: no torch, no weights.
+      - name: Install
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      # The stand-in pipeline, so tests never need the models.
+      - name: Test
+        run: uv run pytest
+        env:
+          LEGOIN_PIPELINE: stub
