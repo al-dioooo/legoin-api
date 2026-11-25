@@ -38,6 +38,12 @@ ErrorCode = Literal[
     "invalid_credentials",
     "email_taken",
     "rate_limited",
+    # Picture builds (contract section 13, ADR-0012).
+    "picture_limit",
+    "picture_budget",
+    "picture_unusable",
+    "picture_refused",
+    "no_valid_build",
 ]
 
 # Leaves an optional field out of the answer instead of sending `null`.
