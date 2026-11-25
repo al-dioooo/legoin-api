@@ -10,4 +10,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 def health(request: Request) -> dict[str, str]:
     settings = request.app.state.settings
-    return {"status": "ok", "version": __version__, "pipeline": settings.pipeline}
+    answer = {"status": "ok", "version": __version__, "pipeline": settings.pipeline}
+    if settings.pipeline == "models":
+        answer["modelTag"] = settings.model_tag
+    return answer

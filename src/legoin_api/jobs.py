@@ -156,7 +156,10 @@ class JobManager:
             if not self._running(job):
                 raise _Stop
             job.stage = stage
-        return step()
+        started = time.perf_counter()
+        result = step()
+        log.info("Scan job %s: %s took %.3f s", job.id, stage, time.perf_counter() - started)
+        return result
 
     def _save(self, job: Job, image: Image.Image, found, parts, colors) -> None:
         detections = []
