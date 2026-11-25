@@ -10,7 +10,7 @@ import re
 import secrets
 from pathlib import Path
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps
 
 from legoin_api.errors import ApiError
 
@@ -43,7 +43,11 @@ def read_photo(data: bytes) -> Image.Image:
             if opened.width * opened.height > MAX_PHOTO_PIXELS:
                 raise ApiError("photo_too_large", "The photo has too many pixels.")
             return ImageOps.exif_transpose(opened).convert("RGB")
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError) as error:
+    except (ApiError, MemoryError):
+        raise
+    except Exception as error:
+        # A corrupt file can raise almost anything from Pillow: `OSError`, `SyntaxError`,
+        # `ValueError`, `TypeError` (from `exif_transpose`), `struct.error`, and so on.
         raise ApiError("photo_type", "The photo can't be decoded.") from error
 
 

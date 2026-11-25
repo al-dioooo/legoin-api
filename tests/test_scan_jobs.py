@@ -1,3 +1,4 @@
+import struct
 import threading
 import time
 
@@ -124,6 +125,37 @@ def test_an_upload_needs_the_device_header(client):
 )
 def test_only_jpeg_png_and_webp_are_accepted(client, data):
     response = upload(client, data)
+
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "photo_type"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("bad value"),
+        TypeError("bad EXIF"),
+        struct.error("short"),
+        OSError(),
+    ],
+)
+def test_any_decode_error_is_photo_type_not_500(client, monkeypatch, error):
+    # Fuzzing raised these from Pillow, `TypeError` from `exif_transpose`.
+    def broken(image):
+        raise error
+
+    monkeypatch.setattr("legoin_api.photos.ImageOps.exif_transpose", broken)
+
+    response = upload(client, encode(pieces()))
+
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "photo_type"
+
+
+def test_a_truncated_photo_is_photo_type(client):
+    data = encode(pieces(), "JPEG")
+
+    response = upload(client, data[: len(data) // 2], name="p.jpg", type="image/jpeg")
 
     assert response.status_code == 415
     assert response.json()["error"]["code"] == "photo_type"
