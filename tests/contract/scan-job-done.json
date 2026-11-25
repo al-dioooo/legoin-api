@@ -1,0 +1,51 @@
+{
+  "id": "job_8c1f2e",
+  "status": "done",
+  "scan": {
+    "id": "scn_4kd2p9",
+    "createdAt": "2026-11-09T03:12:45.120Z",
+    "photo": {
+      "src": "https://photos.legoin.example/scn_4kd2p9.jpg",
+      "width": 1200,
+      "height": 800
+    },
+    "detections": [
+      {
+        "id": "det_a1",
+        "part": "brick-2x4",
+        "color": "red",
+        "box": {
+          "x": 0.075,
+          "y": 0.165,
+          "width": 0.278,
+          "height": 0.245
+        },
+        "confidence": 0.94
+      },
+      {
+        "id": "det_a2",
+        "part": "slope-2x2",
+        "color": "green",
+        "box": {
+          "x": 0.405,
+          "y": 0.54,
+          "width": 0.18,
+          "height": 0.235
+        },
+        "confidence": 0.82
+      },
+      {
+        "id": "det_a3",
+        "part": "brick-2x2",
+        "color": "dark-gray",
+        "box": {
+          "x": 0.727,
+          "y": 0.54,
+          "width": 0.172,
+          "height": 0.262
+        },
+        "confidence": 0.58
+      }
+    ]
+  }
+}

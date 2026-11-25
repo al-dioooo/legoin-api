@@ -1,0 +1,9 @@
+{
+  "theme": "vehicles",
+  "locale": "id",
+  "exclude": [
+    "idea_m2x9",
+    "idea_p0d4",
+    "idea_t6w1"
+  ]
+}

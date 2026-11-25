@@ -1,0 +1,8 @@
+{
+  "id": "job_8c1f2e",
+  "status": "failed",
+  "error": {
+    "code": "too_dark",
+    "message": "The photo is too dark to find pieces."
+  }
+}
