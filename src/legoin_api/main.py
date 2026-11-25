@@ -14,13 +14,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from legoin_api import __version__, errors
 from legoin_api.accounts import FailedLogins, Passwords
 from legoin_api.builds import BuildLibrary
-from legoin_api.config import IdeasGeneratorKind, PictureBuildsKind, PipelineKind, Settings
+from legoin_api.config import (
+    IdeaPreviewMode,
+    IdeasGeneratorKind,
+    PictureBuildsKind,
+    PipelineKind,
+    Settings,
+)
 from legoin_api.ideas.generator import IdeaGenerator, TemplateIdeaGenerator
 from legoin_api.jobs import JobManager
 from legoin_api.photos import PhotoStore
 from legoin_api.picture import availability
 from legoin_api.picture.files import PictureFiles
-from legoin_api.picture.jobs import Limits, PictureJobs, Runner
+from legoin_api.picture.jobs import Limits, PictureJobs, PreviewLimits, Runner
+from legoin_api.picture.previews import IdeaPreviews
 from legoin_api.picture.runner import ProcessRunner
 from legoin_api.picture.store import PictureStore
 from legoin_api.pipeline import Pipeline
@@ -74,12 +81,30 @@ def load_idea_generator(settings: Settings, builds: BuildLibrary) -> IdeaGenerat
 
 
 def load_picture_runner(settings: Settings) -> Runner | None:
-    """The worker process runner, or None when picture builds can't run here (ADR-0012)."""
+    """The worker process runner, or None when neither picture builds nor previews of ideas
+    can run here (ADR-0012)."""
     missing = availability.missing(settings)
-    if missing:
-        if settings.picture_builds is PictureBuildsKind.ANTHROPIC:
-            log.warning("Picture builds are off: %s.", "; ".join(missing))
+    if missing and settings.picture_builds is PictureBuildsKind.ANTHROPIC:
+        log.warning("Picture builds are off: %s.", "; ".join(missing))
+    missing_previews = availability.missing_previews(settings)
+    if missing_previews and settings.idea_previews is not IdeaPreviewMode.OFF:
+        log.warning("Previews of ideas are off: %s.", "; ".join(missing_previews))
+    if missing and missing_previews:
         return None
+    if not missing_previews:
+        log.info(
+            "Previews of ideas on (%s), with %s at effort %s: %d a day per account, $%.2f each",
+            settings.idea_previews,
+            settings.idea_preview_model,
+            settings.idea_preview_effort,
+            settings.idea_preview_daily_limit,
+            settings.idea_preview_cost_usd,
+        )
+    if missing:
+        return ProcessRunner(
+            deadline_s=preview_limits(settings).deadline_s,
+            memory_mb=settings.picture_worker_memory_mb,
+        )
     log.info(
         "Picture builds on, with %s at effort %s: $%.2f a day, %d a day per account, $%.2f a job",
         settings.picture_model,
@@ -104,6 +129,17 @@ def picture_limits(settings: Settings) -> Limits:
         job_seconds=settings.picture_job_seconds,
         job_calls=settings.picture_job_calls,
         queue_size=settings.picture_queue_size,
+    )
+
+
+def preview_limits(settings: Settings) -> PreviewLimits:
+    return PreviewLimits(
+        model=settings.idea_preview_model,
+        effort=settings.idea_preview_effort,
+        daily_limit=settings.idea_preview_daily_limit,
+        job_cost=settings.idea_preview_cost_usd,
+        job_seconds=settings.idea_preview_seconds,
+        job_calls=settings.idea_preview_calls,
     )
 
 
@@ -148,12 +184,24 @@ def create_app(
         # Built builds stay readable when picture builds are off; only new jobs need a runner.
         app.state.picture_store = PictureStore(settings.data_dir / "picture.db")
         app.state.picture_files = PictureFiles(settings.data_dir / "picture-files")
+        # A runner passed in (tests) turns on whatever the settings ask for.
+        runner = picture_runner or load_picture_runner(settings)
+        passed = picture_runner is not None
+        pictures_on = passed or not availability.missing(settings)
+        previews_on = settings.idea_previews is not IdeaPreviewMode.OFF and (
+            passed or not availability.missing_previews(settings)
+        )
         app.state.picture_jobs = PictureJobs(
             app.state.picture_store,
             app.state.picture_files,
             settings.data_dir / "picture-jobs",
             picture_limits(settings),
-            picture_runner or load_picture_runner(settings),
+            runner,
+            pictures=pictures_on,
+            previews=preview_limits(settings) if previews_on else None,
+        )
+        app.state.idea_previews = IdeaPreviews(
+            settings.idea_previews, app.state.picture_jobs, app.state.store
         )
         yield
         # The workers first, so no job writes to a closed store.

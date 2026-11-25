@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Response
 
-from legoin_api.deps import CurrentAccount, PhotosDep, PublicUrlsDep, StoreDep
+from legoin_api.deps import CurrentAccount, PhotosDep, PreviewsDep, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ids import new_id
 from legoin_api.inventory import apply_changes, same_inventory
@@ -36,6 +36,7 @@ def update_detections(
     account: CurrentAccount,
     store: StoreDep,
     urls: PublicUrlsDep,
+    previews: PreviewsDep,
 ) -> Scan:
     def correct(scan: StoredScan) -> StoredScan:
         taken = {d.id for d in scan.detections}
@@ -54,14 +55,22 @@ def update_detections(
     scan = store.modify_scan(account.id, scan_id, correct)
     if scan is None:
         raise scan_not_found(scan_id)
+    if scan.ideas is None:
+        # The ideas went with the pieces they were checked against, and so do their previews.
+        previews.forget(account.id, scan_id)
     return scan.to_wire(urls)
 
 
 @router.delete("/scans/{scan_id}", status_code=204)
 def delete_scan(
-    scan_id: str, account: CurrentAccount, store: StoreDep, photos: PhotosDep
+    scan_id: str,
+    account: CurrentAccount,
+    store: StoreDep,
+    photos: PhotosDep,
+    previews: PreviewsDep,
 ) -> Response:
     scan = store.delete_scan(account.id, scan_id)
     if scan is not None:
         photos.delete(scan.photo_file)
+        previews.forget(account.id, scan_id)
     return Response(status_code=204)

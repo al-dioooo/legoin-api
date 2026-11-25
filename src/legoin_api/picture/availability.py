@@ -5,7 +5,13 @@ import importlib.util
 import os
 from pathlib import Path
 
-from legoin_api.config import PictureBuildsKind, Settings, anthropic_key_is_set
+from legoin_api.config import (
+    IdeaPreviewMode,
+    IdeasGeneratorKind,
+    PictureBuildsKind,
+    Settings,
+    anthropic_key_is_set,
+)
 
 EXTRA = ("bricklayer", "ldraw2mesh", "gltflib", "pygfx", "rendercanvas", "wgpu")
 """The `picture` extra's packages, by import name."""
@@ -30,6 +36,21 @@ def missing(settings: Settings) -> list[str]:
     """What keeps picture builds off; empty when they can run."""
     if settings.picture_builds is PictureBuildsKind.OFF:
         return ["LEGOIN_PICTURE_BUILDS is off"]
+    return prerequisites()
+
+
+def missing_previews(settings: Settings) -> list[str]:
+    """What keeps previews of ideas off; empty when they can run. They need Claude's ideas,
+    and what picture builds need, but not picture builds themselves."""
+    if settings.idea_previews is IdeaPreviewMode.OFF:
+        return ["LEGOIN_IDEA_PREVIEWS is off"]
+    if settings.ideas_kind is not IdeasGeneratorKind.ANTHROPIC:
+        return ["ideas come from the templates, which have previews already"]
+    return prerequisites()
+
+
+def prerequisites() -> list[str]:
+    """What the picture engine needs: the key, the `picture` extra and the parts library."""
     problems = []
     if not anthropic_key_is_set():
         problems.append("ANTHROPIC_API_KEY is unset")

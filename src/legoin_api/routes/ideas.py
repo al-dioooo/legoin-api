@@ -1,12 +1,13 @@
 """Ideas: three builds for a scan, and one idea read back (contract section 6)."""
 
 import asyncio
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from starlette.concurrency import run_in_threadpool
 
-from legoin_api.deps import CurrentAccount, PublicUrlsDep, StoreDep
+from legoin_api.deps import CurrentAccount, PreviewsDep, PublicUrlsDep, StoreDep
 from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import IdeaGenerator, IdeasUnavailable
 from legoin_api.ideas.service import write_ideas
@@ -14,6 +15,7 @@ from legoin_api.routes.scans import scan_not_found
 from legoin_api.schemas import IdeaSet, IdeasRequest, StoredIdea
 
 router = APIRouter(prefix="/v1", tags=["ideas"])
+log = logging.getLogger(__name__)
 
 
 def get_generator(request: Request) -> IdeaGenerator:
@@ -31,6 +33,7 @@ async def create_ideas(
     store: StoreDep,
     generator: GeneratorDep,
     urls: PublicUrlsDep,
+    previews: PreviewsDep,
     request: Request,
 ) -> IdeaSet:
     scan = await run_in_threadpool(store.get_scan, account.id, scan_id)
@@ -52,13 +55,31 @@ async def create_ideas(
     kept = await run_in_threadpool(store.keep_ideas, account.id, scan_id, ideas, keys, inventory)
     if kept is None or kept.ideas is None:
         raise scan_not_found(scan_id)
+    # Previews start after the set is kept, and never fail the request (ADR-0012).
+    try:
+        await run_in_threadpool(previews.after_ideas, account.id, scan_id)
+        kept = await run_in_threadpool(store.get_scan, account.id, scan_id) or kept
+    except Exception:
+        log.exception("Couldn't start the previews of scan %s's ideas", scan_id)
+    if kept.ideas is None:
+        raise scan_not_found(scan_id)
     return urls.with_previews(kept.ideas)
 
 
 @router.get("/scans/{scan_id}/ideas/{idea_id}")
 def get_idea(
-    scan_id: str, idea_id: str, account: CurrentAccount, store: StoreDep, urls: PublicUrlsDep
+    scan_id: str,
+    idea_id: str,
+    account: CurrentAccount,
+    store: StoreDep,
+    urls: PublicUrlsDep,
+    previews: PreviewsDep,
 ) -> StoredIdea:
+    # Opening an `on_open` idea starts its preview; the answer already says `pending`.
+    try:
+        previews.on_open(account.id, scan_id, idea_id)
+    except Exception:
+        log.exception("Couldn't start the preview of idea %s", idea_id)
     scan = store.get_scan(account.id, scan_id)
     if scan is None:
         raise scan_not_found(scan_id)
