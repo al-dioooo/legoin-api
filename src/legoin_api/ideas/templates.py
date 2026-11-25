@@ -408,20 +408,20 @@ TEMPLATES: list[dict] = [
         },
         "steps": {
             "en": [
-                "Build two pillars from brown 1×3 bricks, a gap apart.",
+                "Build two pillars, each of two brown 1×2 bricks stacked, two studs apart.",
                 "Lay the black 2×4 plate across them as the deck.",
-                "Add light gray 1×2 tiles on top for a smooth road.",
+                "Cover the middle of the deck with the two light gray 1×2 tiles as the road.",
             ],
             "id": [
-                "Buat dua tiang dari brick 1×3 cokelat, beri jarak di antaranya.",
-                "Letakkan plate 2×4 hitam melintang di atasnya sebagai lantai.",
-                "Tambahkan tile 1×2 abu-abu terang di atas sebagai jalan yang mulus.",
+                "Buat dua tiang, masing-masing dari dua brick 1×2 cokelat yang ditumpuk, berjarak dua stud.",
+                "Letakkan plate 2×4 hitam melintang di atasnya sebagai lantai jembatan.",
+                "Tutup bagian tengah lantai dengan dua tile 1×2 abu-abu terang sebagai jalan.",
             ],
         },
         "requires": [
-            {"part": "brick-1x3", "color": "brown", "quantity": 2},
-            {"part": "plate-2x4", "color": "black", "quantity": 1},
+            {"part": "brick-1x2", "color": "brown", "quantity": 4},
             {"part": "tile-1x2", "color": "light-gray", "quantity": 2},
+            {"part": "plate-2x4", "color": "black", "quantity": 1},
         ],
     },
     {
@@ -435,20 +435,23 @@ TEMPLATES: list[dict] = [
         },
         "steps": {
             "en": [
-                "Stand the brown and white 1×3 bricks a little apart as posts.",
-                "Lay the black 2×4 plate on top as the roof.",
-                "Put the light gray 1×2 tile between the posts as a bench.",
+                "Lay the dark gray 2×4 plate down as the pavement.",
+                "Stack two white 1×1 bricks on each back corner as the posts.",
+                "Put the brown 1×2 brick in front, between the posts, with the light gray 1×2 tile on top, as a bench.",
+                "Lay the black 2×4 plate on the posts as the roof.",
             ],
             "id": [
-                "Berdirikan brick 1×3 cokelat dan putih agak berjauhan sebagai tiang.",
-                "Letakkan plate 2×4 hitam di atasnya sebagai atap.",
-                "Taruh tile 1×2 abu-abu terang di antara tiang sebagai bangku.",
+                "Letakkan plate 2×4 abu-abu gelap sebagai trotoar.",
+                "Tumpuk dua brick 1×1 putih di tiap sudut belakang sebagai tiang.",
+                "Pasang brick 1×2 cokelat di depan, di antara tiang, dengan tile 1×2 abu-abu terang di atasnya, sebagai bangku.",
+                "Letakkan plate 2×4 hitam di atas tiang sebagai atap.",
             ],
         },
         "requires": [
-            {"part": "brick-1x3", "color": "brown", "quantity": 1},
-            {"part": "brick-1x3", "color": "white", "quantity": 1},
+            {"part": "brick-1x1", "color": "white", "quantity": 4},
+            {"part": "brick-1x2", "color": "brown", "quantity": 1},
             {"part": "plate-2x4", "color": "black", "quantity": 1},
+            {"part": "plate-2x4", "color": "dark-gray", "quantity": 1},
             {"part": "tile-1x2", "color": "light-gray", "quantity": 1},
         ],
     },
@@ -458,25 +461,26 @@ TEMPLATES: list[dict] = [
         "difficulty": "medium",
         "title": {"en": "Windmill", "id": "Kincir angin"},
         "summary": {
-            "en": "A white tower, a red roof and crossed sails.",
-            "id": "Menara putih, atap merah, dan baling-baling bersilang.",
+            "en": "A white tower, a red roof and sails.",
+            "id": "Menara putih, atap merah, dan baling-baling.",
         },
         "steps": {
             "en": [
                 "Stack three white 2×2 bricks as the tower.",
+                "Put the two brown 1×2 plates along the front of the top, each sticking out one stud to its side, as sails, and the white 1×2 plate behind them.",
                 "Top it with the red 2×2 slope as the roof.",
-                "Cross two brown 1×2 plates on the front as sails.",
             ],
             "id": [
                 "Tumpuk tiga brick 2×2 putih sebagai menara.",
+                "Pasang dua plate 1×2 cokelat berjajar di sisi depan atasnya, masing-masing menjorok satu stud ke samping, sebagai baling-baling, lalu plate 1×2 putih di belakangnya.",
                 "Tutup dengan slope 2×2 merah sebagai atap.",
-                "Silangkan dua plate 1×2 cokelat di depan sebagai baling-baling.",
             ],
         },
         "requires": [
             {"part": "brick-2x2", "color": "white", "quantity": 3},
-            {"part": "slope-2x2", "color": "red", "quantity": 1},
             {"part": "plate-1x2", "color": "brown", "quantity": 2},
+            {"part": "plate-1x2", "color": "white", "quantity": 1},
+            {"part": "slope-2x2", "color": "red", "quantity": 1},
         ],
     },
     {
