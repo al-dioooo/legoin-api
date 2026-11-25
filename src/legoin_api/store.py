@@ -21,7 +21,7 @@ from legoin_api.errors import ApiError
 from legoin_api.ideas.generator import ShownIdea
 from legoin_api.ids import utc_now
 from legoin_api.inventory import recheck, to_inventory
-from legoin_api.schemas import Detection, IdeaSet, PartCount, Photo, Scan, Theme
+from legoin_api.schemas import Account, Detection, IdeaSet, PartCount, Photo, Scan, Theme
 
 SCHEMA_VERSION = 2
 
@@ -166,6 +166,21 @@ class StoredScan:
 
     def with_changes(self, **changes) -> "StoredScan":
         return replace(self, **changes)
+
+
+@dataclass(frozen=True)
+class StoredAccount:
+    id: str
+    email: str
+    password_hash: str
+    created_at: str
+
+    def to_wire(self) -> Account:
+        return Account(id=self.id, email=self.email, created_at=self.created_at)
+
+
+def _row_to_account(row: sqlite3.Row) -> StoredAccount:
+    return StoredAccount(row["id"], row["email"], row["password_hash"], row["created_at"])
 
 
 def _row_to_scan(row: sqlite3.Row) -> StoredScan:
@@ -334,3 +349,65 @@ class Store:
                 "DELETE FROM scans WHERE id = ? AND device_id = ? RETURNING *", (scan_id, device_id)
             ).fetchone()
         return _row_to_scan(row) if row else None
+
+    # Accounts and sessions
+
+    def insert_account(self, account: StoredAccount) -> bool:
+        """Adds an account. False if its email already has one."""
+        with self._lock:
+            try:
+                self._db.execute(
+                    "INSERT INTO accounts VALUES (?, ?, ?, ?)",
+                    (account.id, account.email, account.password_hash, account.created_at),
+                )
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    def account_by_email(self, email: str) -> StoredAccount | None:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM accounts WHERE email = ?", (email,)).fetchone()
+        return _row_to_account(row) if row else None
+
+    def set_password_hash(self, account_id: str, password_hash: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "UPDATE accounts SET password_hash = ? WHERE id = ?", (password_hash, account_id)
+            )
+
+    def insert_session(self, token_hash: str, account_id: str, expires_at: str) -> None:
+        """Adds a session, and drops the account's sessions that have expired."""
+        now = utc_now()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._db.execute(
+                    "DELETE FROM sessions WHERE account_id = ? AND expires_at <= ?",
+                    (account_id, now),
+                )
+                self._db.execute(
+                    "INSERT INTO sessions VALUES (?, ?, ?, ?)",
+                    (token_hash, account_id, now, expires_at),
+                )
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def session_account(self, token_hash: str) -> StoredAccount | None:
+        """The account of a session that hasn't expired. An expired one is deleted."""
+        now = utc_now()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT a.*, s.expires_at FROM sessions s JOIN accounts a ON a.id = s.account_id"
+                " WHERE s.token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+            if row is not None and row["expires_at"] <= now:
+                self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+                row = None
+        return _row_to_account(row) if row else None
+
+    def delete_session(self, token_hash: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
