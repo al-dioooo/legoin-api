@@ -87,14 +87,11 @@ def test_a_preview_is_a_small_square_webp_and_the_model_is_ldraw(entry):
     assert sum(line["quantity"] for line in entry["parts"]) == len(parts)
 
 
-@pytest.mark.parametrize(
-    "template",
-    [template for template in TEMPLATES if template["id"] in BY_ID],
-    ids=lambda template: template["id"],
-)
+@pytest.mark.parametrize("template", TEMPLATES, ids=lambda template: template["id"])
 def test_a_template_matches_its_build(template):
-    build = BY_ID[template["id"]]
+    build = BY_ID.get(template["id"])
 
+    assert build, f"template {template['id']} has no build"
     for field in ("theme", "difficulty", "title", "summary", "steps"):
         assert template[field] == build[field], field
     assert counts(template["requires"]) == counts(build["parts"])
