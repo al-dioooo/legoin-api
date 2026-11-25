@@ -191,3 +191,15 @@ def test_photos_load_without_a_header_and_only_by_their_name(client, seed, examp
     assert photo.headers["content-type"] == "image/jpeg"
     assert client.get("/v1/photos/..%2Flegoin.db").status_code == 404
     assert client.get("/v1/photos/short.jpg").status_code == 404
+
+
+def test_a_photo_name_must_match_exactly(tmp_path):
+    from legoin_api.photos import PhotoStore
+
+    photos = PhotoStore(tmp_path)
+    name = photos.new_name()
+
+    assert photos.path(name) == tmp_path / name
+    # `$` also matched before a trailing newline.
+    for wrong in (f"{name}\n", f"{name}x", f"x{name}", name.replace(".jpg", ".png")):
+        assert photos.path(wrong) is None

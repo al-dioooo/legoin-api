@@ -44,6 +44,16 @@ def load_pipeline(settings: Settings) -> Pipeline:
     return ModelPipeline(files, threads=settings.torch_threads)
 
 
+def warn_about_deployment(settings: Settings) -> None:
+    if settings.container and not settings.public_url:
+        # uvicorn runs without --forwarded-allow-ips, so behind a TLS proxy the request's URL
+        # is the proxy's view of the container: http://<internal host>/...
+        log.warning(
+            "LEGOIN_PUBLIC_URL is unset, so photo URLs use each request's own URL, which "
+            "behind a proxy is the internal one. Set it to the API's public base URL."
+        )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -56,6 +66,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        warn_about_deployment(settings)
         app.state.store = Store(settings.data_dir / "legoin.db")
         app.state.photos = PhotoStore(settings.data_dir / "photos")
         app.state.jobs = JobManager(
@@ -64,10 +75,12 @@ def create_app(
             app.state.photos,
             timeout_s=settings.scan_timeout_s,
             workers=settings.scan_workers,
+            queue_size=settings.scan_queue_size,
         )
         # Until an LLM provider is chosen (contract open question 1).
         app.state.ideas = idea_generator or TemplateIdeaGenerator()
         yield
+        # The worker first, so no job writes to a closed store.
         app.state.jobs.shutdown()
         app.state.store.close()
 

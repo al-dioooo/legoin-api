@@ -379,3 +379,54 @@ def test_an_unavailable_provider_is_503(with_generator):
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "unavailable"
     assert response.headers["retry-after"] == "10"
+
+
+class CorrectedWhileWriting:
+    """Writes template ideas, but a correction lands while it's writing them."""
+
+    def __init__(self, keep: set[str]):
+        self.keep = keep
+        self.app = None
+
+    async def propose(self, request):
+        def correct(scan):
+            return scan.with_changes(detections=[d for d in scan.detections if d.id in self.keep])
+
+        self.app.state.store.modify_scan(DEVICE, "scn_4kd2p9", correct)
+        return await TemplateIdeaGenerator().propose(request)
+
+
+def test_ideas_answered_after_a_concurrent_correction_are_kept(with_generator):
+    # The race car was proposed while the red brick 2×4 was still there; it's gone by the end.
+    generator = CorrectedWhileWriting(keep={"det_a2", "det_a3", "det_b7"})
+    client = with_generator(generator)
+    generator.app = client.app
+
+    response = ask(client)
+
+    assert response.status_code == 200
+    ideas = response.json()
+    race_car = ideas["items"][0]
+    assert race_car["title"] == "Little race car"
+    assert {"part": "brick-2x4", "color": "red", "quantity": 1} in race_car["missing"]
+    assert all(line["part"] != "brick-2x4" for line in race_car["used"])
+    scan = client.get("/v1/scans/scn_4kd2p9", headers=HEADERS).json()
+    assert scan["ideas"] == ideas
+    for idea in ideas["items"]:
+        url = f"/v1/scans/scn_4kd2p9/ideas/{idea['id']}"
+        assert client.get(url, headers=HEADERS).json() == {"idea": idea, "set": ideas}
+
+
+def test_a_concurrent_correction_that_removes_every_piece_is_no_pieces(with_generator):
+    generator = CorrectedWhileWriting(keep=set())
+    client = with_generator(generator)
+    generator.app = client.app
+
+    response = ask(client)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "no_pieces"
+    scan = client.get("/v1/scans/scn_4kd2p9", headers=HEADERS).json()
+    assert scan["lastTheme"] == "animals"
+    assert "ideas" not in scan
+    assert client.app.state.store.written_ideas(DEVICE, "scn_4kd2p9") == []

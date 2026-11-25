@@ -1,4 +1,7 @@
+import threading
+
 from images import pieces
+from test_scan_jobs import GatedPipeline
 
 from legoin_api.jobs import JobManager, floor4, to_box
 from legoin_api.photos import PhotoStore
@@ -41,3 +44,38 @@ def test_ended_jobs_are_forgotten_after_ten_minutes(tmp_path):
     now[0] = 601.0
     assert jobs.get("device", job.id) is None
     jobs.shutdown()
+
+
+def test_shutting_down_waits_for_the_running_job_and_saves_nothing(tmp_path):
+    pipeline = GatedPipeline()
+    store, photos = Store(tmp_path / "db"), PhotoStore(tmp_path / "photos")
+    jobs = JobManager(pipeline, store, photos)
+    jobs.submit("device", pieces())
+    jobs.submit("device", pieces())
+    assert pipeline.entered["detect"].wait(5)
+
+    stopping = threading.Thread(target=jobs.shutdown)
+    stopping.start()
+    stopping.join(0.2)
+    assert stopping.is_alive()
+
+    pipeline.open_all()
+    stopping.join(2)
+    assert not stopping.is_alive()
+    # The running job stopped at its next stage and the waiting one never started.
+    assert not pipeline.entered["classify"].is_set()
+    assert store.list_scans("device") == []
+    assert not any(photos.directory.iterdir())
+    store.close()
+
+
+def test_shutting_down_gives_up_on_a_stuck_job(tmp_path, caplog):
+    pipeline = GatedPipeline()
+    jobs = JobManager(pipeline, Store(tmp_path / "db"), PhotoStore(tmp_path / "photos"))
+    jobs.submit("device", pieces())
+    assert pipeline.entered["detect"].wait(5)
+
+    jobs.shutdown(timeout_s=0.1)
+
+    assert "still running" in caplog.text
+    pipeline.open_all()

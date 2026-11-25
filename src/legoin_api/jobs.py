@@ -12,6 +12,8 @@ service runs as one process (ADR-0008). The rules:
 - The photo is written only when the scan is saved, so a failed or cancelled job leaves
   nothing behind.
 - Ended jobs are forgotten after `keep_s`.
+- At most `queue_size` jobs wait or run at once, each holding its decoded photo. An upload
+  takes its place before the photo is decoded, so the memory they hold stays bounded.
 """
 
 import logging
@@ -19,7 +21,7 @@ import math
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -37,6 +39,9 @@ log = logging.getLogger(__name__)
 KEEP_ENDED_JOBS_S = 600.0
 """The contract keeps an ended job for at least 10 minutes."""
 
+SHUTDOWN_WAIT_S = 5.0
+"""How long shutting down waits for a running job to stop; a stage takes well under 1 s."""
+
 
 @dataclass
 class Job:
@@ -50,6 +55,10 @@ class Job:
     error: ErrorDetail | None = None
     ended_at: float | None = None
     cancelled: bool = False
+
+
+class QueueFull(Exception):
+    """Every place in the queue is taken: the API answers `503 unavailable`."""
 
 
 class _Stop(Exception):
@@ -82,6 +91,7 @@ class JobManager:
         timeout_s: float = 30.0,
         keep_s: float = KEEP_ENDED_JOBS_S,
         workers: int = 1,
+        queue_size: int = 8,
         clock: Callable[[], float] = time.monotonic,
     ):
         self.pipeline = pipeline
@@ -89,22 +99,69 @@ class JobManager:
         self.photos = photos
         self.timeout_s = timeout_s
         self.keep_s = keep_s
+        self.queue_size = queue_size
         self.clock = clock
+        self._queued = 0
+        self._closing = False
+        self._running_futures: set[Future] = set()
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="scan")
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout_s: float = SHUTDOWN_WAIT_S) -> None:
+        """Cancels waiting jobs and waits for running ones, which stop at their next stage and
+        save nothing. Call it before closing the store, so no job writes to a closed one."""
+        with self._lock:
+            self._closing = True
+            futures = set(self._running_futures)
         self._executor.shutdown(wait=False, cancel_futures=True)
+        # `wait` never counts a future cancelled that way as done, so leave those out.
+        running = {future for future in futures if not future.cancelled()}
+        _, still_running = wait(running, timeout=timeout_s)
+        if still_running:
+            log.warning("Shutting down with %d scan job(s) still running", len(still_running))
 
-    def submit(self, device_id: str, image: Image.Image) -> Job:
+    def reserve(self) -> None:
+        """Takes a place in the queue for a photo about to be read, or raises `QueueFull`.
+
+        `submit(..., reserved=True)` hands the place to its job, which gives it back when it
+        ends. If no job comes of it, `release` gives it back.
+        """
+        with self._lock:
+            if self._queued >= self.queue_size:
+                raise QueueFull
+            self._queued += 1
+
+    def release(self) -> None:
+        with self._lock:
+            self._queued -= 1
+
+    def submit(self, device_id: str, image: Image.Image, *, reserved: bool = False) -> Job:
+        """Queues a job. Without `reserved`, it takes its own place or raises `QueueFull`;
+        with it, a place taken by `reserve`, which stays the caller's if this raises."""
+        if not reserved:
+            self.reserve()
         job = Job(new_id("job"), device_id, self.clock() + self.timeout_s, image)
         with self._lock:
             self._forget_ended()
             self._jobs[job.id] = job
             view = replace(job, image=None)
-        self._executor.submit(self._run, job)
+        try:
+            future = self._executor.submit(self._run, job)
+        except BaseException:
+            with self._lock:
+                self._jobs.pop(job.id, None)
+            if not reserved:
+                self.release()
+            raise
+        with self._lock:
+            self._running_futures.add(future)
+        future.add_done_callback(self._forget_future)
         return view
+
+    def _forget_future(self, future: Future) -> None:
+        with self._lock:
+            self._running_futures.discard(future)
 
     def get(self, device_id: str, job_id: str) -> Job | None:
         """A copy of the job as it is now, or None if this device has no such job."""
@@ -150,6 +207,7 @@ class JobManager:
             self._end(job, error=ErrorDetail(code="internal", message="The scan failed."))
         finally:
             job.image = None
+            self.release()
 
     def _stage(self, job: Job, stage: ScanStage, step: Callable):
         with self._lock:
@@ -179,22 +237,26 @@ class JobManager:
                 )
             )
         photo = self.photos.save(image)
-        with self._lock:
-            keep = self._running(job)
-            if keep:
-                scan = StoredScan(
-                    id=new_id("scn", 12),
-                    device_id=job.device_id,
-                    created_at=utc_now(),
-                    photo_file=photo,
-                    photo_width=image.width,
-                    photo_height=image.height,
-                    detections=detections,
-                )
-                self.store.insert_scan(scan)
-                job.status, job.scan_id, job.ended_at = "done", scan.id, self.clock()
-        if not keep:
-            self.photos.delete(photo)
+        kept = False
+        try:
+            with self._lock:
+                if self._running(job):
+                    scan = StoredScan(
+                        id=new_id("scn", 12),
+                        device_id=job.device_id,
+                        created_at=utc_now(),
+                        photo_file=photo,
+                        photo_width=image.width,
+                        photo_height=image.height,
+                        detections=detections,
+                    )
+                    self.store.insert_scan(scan)
+                    job.status, job.scan_id, job.ended_at = "done", scan.id, self.clock()
+                    kept = True
+        finally:
+            # Not kept, or the insert failed (a full disk, a closed store): no orphaned photo.
+            if not kept:
+                self.photos.delete(photo)
 
     def _end(self, job: Job, *, error: ErrorDetail) -> None:
         with self._lock:
@@ -204,7 +266,7 @@ class JobManager:
     # Under the lock
 
     def _running(self, job: Job) -> bool:
-        return not job.cancelled and not self._check_deadline(job)
+        return not self._closing and not job.cancelled and not self._check_deadline(job)
 
     def _check_deadline(self, job: Job) -> bool:
         """Ends a job that ran out of time. True once the job has ended, for any reason."""

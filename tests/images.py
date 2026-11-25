@@ -2,6 +2,8 @@
 
 import io
 import random
+import struct
+import zlib
 
 from PIL import Image, ImageDraw
 
@@ -41,3 +43,23 @@ def soft_gradient(size: tuple[int, int] = (400, 300)) -> Image.Image:
     width, height = size
     ramp = bytes(100 + 70 * x // (width - 1) for x in range(width))
     return Image.frombytes("L", size, ramp * height).convert("RGB")
+
+
+def huge_png(width: int, height: int) -> bytes:
+    """A valid black-and-white PNG of any size, a few KB on disk: a decompression bomb.
+
+    Written by hand, so making it never holds the decoded image in memory.
+    """
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    # One bit per pixel, grayscale; each row starts with filter type 0.
+    header = struct.pack(">IIBBBBB", width, height, 1, 0, 0, 0, 0)
+    row = b"\x00" * (1 + (width + 7) // 8)
+    compressor = zlib.compressobj(9)
+    pixels = b"".join(compressor.compress(row) for _ in range(height)) + compressor.flush()
+    return (
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", pixels) + chunk(b"IEND", b"")
+    )

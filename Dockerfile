@@ -38,6 +38,7 @@ RUN useradd --system --uid 10001 --no-create-home legoin \
 USER legoin
 
 ENV PATH=/opt/legoin/venv/bin:$PATH \
+    LEGOIN_CONTAINER=1 \
     LEGOIN_PIPELINE=models \
     LEGOIN_DATA_DIR=/data \
     YOLO_CONFIG_DIR=/tmp/ultralytics \
