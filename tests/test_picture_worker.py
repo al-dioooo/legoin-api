@@ -1,4 +1,3 @@
-import json
 import sys
 import threading
 import time
@@ -7,7 +6,7 @@ from pathlib import Path
 import anthropic
 import httpx2 as httpx
 import pytest
-from picture_fakes import FakeChecks, FakeClaude, FakeRenders, happy_script, jpeg, tool
+from picture_fakes import PIECES, FakeChecks, FakeClaude, FakeRenders, happy_script, jpeg, text
 
 from legoin_api.picture import worker
 from legoin_api.picture.agent import Outcome
@@ -20,18 +19,42 @@ FAKE_WORKER = (sys.executable, str(Path(__file__).parent / "fake_picture_worker.
 @pytest.fixture
 def spec(tmp_path):
     (tmp_path / "out").mkdir()
-    (tmp_path / "picture.jpg").write_bytes(jpeg())
+    (tmp_path / "photo").write_bytes(jpeg())
     return {
-        "jobId": "pjob_test",
-        "picture": str(tmp_path / "picture.jpg"),
+        "jobId": "bjob_test",
+        "photo": str(tmp_path / "photo"),
         "out": str(tmp_path / "out"),
         "locale": "en",
+        "pieces": [line.wire() for line in PIECES],
+        "builds": [
+            {"theme": "vehicles", "kind": "a car", "avoid": []},
+            {"theme": "vehicles", "kind": "a plane", "avoid": ["Jet"]},
+        ],
         "model": "claude-opus-5-5",
         "effort": "medium",
         "maxCalls": 24,
         "maxCost": 0.5,
         "maxSeconds": 300,
+        "maxPieces": 40,
+        "maxTokens": 4000,
+        "staggerS": 0,
     }
+
+
+class PerBuild:
+    """Claude for each build of a set, told apart by what the request asks to build."""
+
+    def __init__(self, **scripts):
+        self.scripts = scripts
+        self.started: dict[str, float] = {}
+
+    def __call__(self, **kwargs):
+        brief = kwargs["messages"][0]["content"][2]["text"]
+        for kind, claude in self.scripts.items():
+            if f"Build a {kind}," in brief:
+                self.started.setdefault(kind, time.monotonic())
+                return claude(**kwargs)
+        raise AssertionError(f"no script for {brief!r}")
 
 
 def run(spec, claude, checks=None):
@@ -48,34 +71,47 @@ def run(spec, claude, checks=None):
     return events, renders
 
 
-def test_a_job_reports_its_stages_calls_and_build(spec):
-    events, renders = run(spec, FakeClaude(happy_script()))
+def of(events, index):
+    return [event for event in events if event.get("build") == index]
 
-    kinds = [event["type"] if event["type"] != "stage" else event["stage"] for event in events]
-    assert kinds == [
-        "designing", "calling", "called", "calling", "called", "checking", "rendering", "done",
-    ]  # fmt: skip
-    called = events[2]
+
+def test_each_build_reports_its_calls_and_ends_on_its_own(spec):
+    car = FakeClaude(happy_script())
+    plane = FakeClaude([([text("")], "refusal")])
+
+    events, renders = run(spec, PerBuild(car=car, plane=plane))
+
+    assert [e["type"] for e in of(events, 0)] == ["calling", "called", "calling", "called", "built"]
+    assert [e["type"] for e in of(events, 1)] == ["calling", "called", "failed"]
+    called = of(events, 0)[1]
     assert called["model"] == "claude-opus-5-5"
     assert called["usage"] == {"input": 10, "output": 500, "cacheRead": 4000, "cacheWrite": 1000}
-    build = events[-1]["build"]
-    assert build["title"] == "Little race car" and not build["plain"]
-    assert {line["part"] for line in build["parts"]} >= {"brick-2x4", "round-1x1"}
-    assert len(build["pieces"]) == 6
-    out = Path(spec["out"])
+    result = of(events, 0)[-1]["result"]
+    assert result["title"] == "Little race car" and not result["plain"]
+    assert result["difficulty"] == "easy"
+    assert {line["part"] for line in result["parts"]} >= {"brick-2x4", "round-1x1"}
+    assert len(result["pieces"]) == 6
+    assert result["calls"] == 2 and result["cost"] > 0
+    out = Path(spec["out"]) / "0"
     assert (out / "preview.webp").read_bytes() == b"RIFF-fake-webp"
     assert (out / "model.ldr").read_text() == "0 Little race car\n"
     assert renders.previews == 1
-
-
-def test_a_failed_outcome_is_reported_with_its_code(spec):
-    events, _ = run(spec, FakeClaude([[tool("reject_picture", {"reason": "no_subject"})]]))
-
-    assert events[-1] == {
+    assert of(events, 1)[-1] == {
         "type": "failed",
-        "code": "picture_unusable",
-        "message": "There's no clear subject in the picture to build.",
+        "build": 1,
+        "code": "refused",
+        "message": "Claude declined the build.",
     }
+    # Each build is asked for its own kind of thing, with the builds to avoid.
+    assert "Jet" in plane.calls[0]["messages"][0]["content"][2]["text"]
+
+
+def test_the_builds_after_the_first_wait_their_stagger(spec):
+    claude = PerBuild(car=FakeClaude(happy_script()), plane=FakeClaude(happy_script()))
+
+    run({**spec, "staggerS": 0.3}, claude)
+
+    assert claude.started["plane"] - claude.started["car"] >= 0.25
 
 
 @pytest.mark.parametrize(
@@ -89,20 +125,20 @@ def test_errors_from_the_api_are_unavailable_or_internal(spec, status, code):
 
     events, _ = run(spec, failing)
 
-    assert events[-1]["code"] == code
+    assert [of(events, i)[-1]["code"] for i in (0, 1)] == [code, code]
 
 
 def test_a_build_that_fails_the_last_check_is_never_saved(spec, monkeypatch):
     # An agent that ends `done` with a build BrickLayer then finds a problem in.
     pieces = (Piece("p1", "brick-2x4", "red", 0, 0, 5, 0),)
     outcome = Outcome(status="done", code="finished", pieces=pieces, title="T", steps=["a", "b"])
-    monkeypatch.setattr(worker.PictureAgent, "run", lambda self, picture, locale: outcome)
+    monkeypatch.setattr(worker.PictureAgent, "run_scan", lambda self, *args: outcome)
 
     events, renders = run(spec, FakeClaude([]), FakeChecks(bad={"p1"}))
 
-    assert events[-1]["code"] == "internal"
+    assert [of(events, i)[-1]["code"] for i in (0, 1)] == ["internal", "internal"]
     assert renders.previews == 0
-    assert not (Path(spec["out"]) / "preview.webp").exists()
+    assert not list(Path(spec["out"]).rglob("preview.webp"))
 
 
 def process(spec, behaviour, *, deadline_s=20.0, memory_mb=1024, stop=None):
@@ -118,8 +154,8 @@ def test_the_runner_passes_the_workers_events_and_skips_other_lines(spec):
     events, _ = process(spec, "done")
 
     assert events == [
-        {"type": "stage", "stage": "designing"},
-        {"type": "failed", "code": "picture_unusable", "message": "Nothing to build."},
+        {"type": "calling", "build": 0, "worst": 0.1},
+        {"type": "failed", "build": 0, "code": "refused", "message": "Declined."},
     ]
 
 
@@ -136,7 +172,7 @@ def test_the_runner_kills_a_worker_past_its_memory(spec):
     assert events[-1] == {
         "type": "failed",
         "code": "internal",
-        "message": "The picture worker used too much memory.",
+        "message": "The build worker used too much memory.",
     }
     assert took < 10
 
@@ -154,7 +190,7 @@ def test_the_runner_kills_a_worker_when_the_job_is_cancelled(spec):
 def test_the_runner_ends_when_the_worker_dies(spec):
     events, _ = process(spec, "crash")
 
-    assert events == [{"type": "stage", "stage": "designing"}]
+    assert events == [{"type": "calling", "build": 0, "worst": 0.1}]
 
 
 def test_the_worker_gets_few_threads_and_the_environment(monkeypatch):
@@ -166,36 +202,12 @@ def test_the_worker_gets_few_threads_and_the_environment(monkeypatch):
 
 
 def test_the_real_worker_module_reports_a_bad_spec_as_internal(spec, tmp_path):
-    """The real `python -m legoin_api.picture.worker`: a picture that isn't there fails
-    cleanly, as an event, without calling Claude."""
+    """The real `python -m legoin_api.picture.worker`: a photo that isn't there fails the
+    whole set cleanly, as one event without a build, without calling Claude."""
     events = []
     runner = ProcessRunner(60, 2048)
-    runner.run({**spec, "picture": str(tmp_path / "missing.jpg")}, events.append, threading.Event())
+    runner.run({**spec, "photo": str(tmp_path / "missing.jpg")}, events.append, threading.Event())
 
-    assert events[0] == {"type": "stage", "stage": "designing"}
-    assert events[-1]["type"] == "failed"
-    assert events[-1]["code"] == "internal"
-    assert json.dumps(events)  # every line was an event
-
-
-def test_an_idea_spec_builds_the_ideas_preview(spec):
-    from picture_fakes import CAR
-
-    idea = {
-        "scanId": "scn_1",
-        "ideaId": "idea_a",
-        "title": "Little race car",
-        "summary": "Red.",
-        "steps": ["One.", "Two."],
-        "parts": [{"part": p["part"], "color": p["color"], "quantity": 1} for p in CAR],
-    }
-    claude = FakeClaude(happy_script())
-    events, renders = run({**spec, "kind": "idea", "idea": idea, "maxTokens": 4000}, claude)
-
-    assert claude.calls[0]["max_tokens"] == 4000
-    assert claude.calls[0]["messages"][0]["content"][0]["type"] == "text"
-    build = events[-1]["build"]
-    assert events[-1]["type"] == "done"
-    assert build["title"] == "Little race car"
-    assert len(build["pieces"]) == 6
-    assert renders.previews == 1
+    assert [(event["type"], event["code"], "build" in event) for event in events] == [
+        ("failed", "internal", False)
+    ]

@@ -1,4 +1,4 @@
-"""Runs a picture job in a worker process of its own, and watches it (ADR-0012).
+"""Runs a set of builds in a worker process of its own, and watches it (ADR-0012, ADR-0013).
 
 `python -m legoin_api.picture.worker` reads the job's spec on stdin and reports events as JSON
 lines on stdout. The runner passes them on, and kills the worker when the job is cancelled,
@@ -69,7 +69,7 @@ class ProcessRunner:
                 lines.put(line)
             lines.put(None)
 
-        threading.Thread(target=read, name=f"picture-{spec['jobId']}", daemon=True).start()
+        threading.Thread(target=read, name=f"builds-{spec['jobId']}", daemon=True).start()
         assert process.stdin is not None
         process.stdin.write(json.dumps(spec))
         process.stdin.close()
@@ -87,26 +87,26 @@ class ProcessRunner:
                     try:
                         emit(json.loads(line))
                     except json.JSONDecodeError:
-                        log.warning("Picture job %s: not an event: %.200s", spec["jobId"], line)
+                        log.warning("Build job %s: not an event: %.200s", spec["jobId"], line)
                 if stop.is_set():
                     break
                 if time.monotonic() > deadline:
-                    log.warning("Picture job %s ran past %.0f s", spec["jobId"], deadline_s)
+                    log.warning("Build job %s ran past %.0f s", spec["jobId"], deadline_s)
                     emit(
                         {
                             "type": "failed",
                             "code": "timeout",
-                            "message": "The picture build took too long.",
+                            "message": "The builds took too long.",
                         }
                     )
                     break
                 if (resident := resident_mb(process.pid)) > self.memory_mb:
-                    log.warning("Picture job %s used %d MB", spec["jobId"], resident)
+                    log.warning("Build job %s used %d MB", spec["jobId"], resident)
                     emit(
                         {
                             "type": "failed",
                             "code": "internal",
-                            "message": "The picture worker used too much memory.",
+                            "message": "The build worker used too much memory.",
                         }
                     )
                     break
