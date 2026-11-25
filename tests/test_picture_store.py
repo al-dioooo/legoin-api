@@ -116,3 +116,61 @@ def test_picture_builds_are_off_until_everything_is_there(monkeypatch, tmp_path)
     (tmp_path / "parts").mkdir()
     (tmp_path / "parts" / "3001.dat").write_text("0 Brick 2 x 4\n")
     assert availability.ldraw_library() == tmp_path
+
+
+def test_a_version_1_file_gets_job_kinds_and_idea_builds(tmp_path):
+    import sqlite3
+
+    from legoin_api.picture import store as module
+
+    path = tmp_path / "picture.db"
+    old = sqlite3.connect(path)
+    v1 = module.SCHEMA.replace("    kind TEXT NOT NULL DEFAULT 'picture'\n", "")
+    v1 = v1.replace("    cost REAL NOT NULL DEFAULT 0,\n);", "    cost REAL NOT NULL DEFAULT 0\n);")
+    v1 = v1.replace(module.IDEA_BUILDS, "").replace("user_version = 2", "user_version = 1")
+    old.executescript(v1)
+    old.execute(
+        "INSERT INTO picture_jobs (id, account_id, day, created_at, status, counted)"
+        " VALUES ('pjob_old', 'acc_a', '2026-11-25', 't', 'done', 1)"
+    )
+    old.commit()
+    old.close()
+
+    store = PictureStore(path)
+
+    assert store.jobs_counted("acc_a", "2026-11-25") == 1
+    assert store.jobs_counted("acc_a", "2026-11-25", "idea") == 0
+    assert store._db.execute("PRAGMA user_version").fetchone()[0] == 2
+    store.close()
+
+
+def idea_build(build_id, idea_id, scan_id="scn_1", account="acc_a"):
+    from legoin_api.picture.store import StoredIdeaBuild
+
+    return StoredIdeaBuild(
+        id=build_id,
+        account_id=account,
+        scan_id=scan_id,
+        idea_id=idea_id,
+        created_at="t",
+        preview_file=f"{build_id:x<22}.webp",
+        model_file=f"{build_id:x<22}.ldr",
+        pieces=[Piece("p1", "brick-2x4", "red", 0, 0, 0, 0)],
+    )
+
+
+def test_idea_builds_are_kept_by_scan_and_deleted_but_those_kept(store):
+    for build_id, idea_id in [("gen_1", "idea_a"), ("gen_2", "idea_b"), ("gen_3", "idea_c")]:
+        store.insert_idea_build(idea_build(build_id, idea_id))
+    store.insert_idea_build(idea_build("gen_4", "idea_a", scan_id="scn_2"))
+
+    gone = store.delete_idea_builds("acc_a", "scn_1", keep=frozenset({"idea_b"}))
+
+    assert sorted(b.id for b in gone) == ["gen_1", "gen_3"]
+    assert store.get_idea_build("gen_2") == idea_build("gen_2", "idea_b")
+    assert store.get_idea_build("gen_1") is None
+    assert store.get_idea_build("gen_4") is not None
+    assert store.delete_idea_build("gen_4").idea_id == "idea_a"
+    store.insert_job("pjob_i", "acc_a", "2026-11-25", "t", kind="idea")
+    assert store.jobs_counted("acc_a", "2026-11-25", "idea") == 1
+    assert store.jobs_counted("acc_a", "2026-11-25") == 0
