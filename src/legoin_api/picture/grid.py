@@ -1,4 +1,4 @@
-"""A picture build as pieces on a stud grid: what the agent places and removes.
+"""A build as pieces on a stud grid: what the agent places and removes.
 
 The grid is BrickLayer's, as the agent is told:
 
@@ -134,35 +134,29 @@ def problem_with(spec: dict) -> str | None:
 class Build:
     """The pieces placed so far. Ids are `p1`, `p2`, … and never reused.
 
-    An idea's preview is limited to the idea's own part and color pairs, `allowed`, and to
-    `max_pieces`; a picture build may use the whole catalogue, up to `MAX_PIECES`.
+    A build from a scan (ADR-0013) may use only the pieces the scan found: `stock` counts each
+    part and color pair, and `place` refuses a piece once every one of its pair is in the build.
+    Without `stock`, any catalogue piece goes. Either way, at most `max_pieces`.
     """
 
-    def __init__(
-        self,
-        allowed: frozenset[tuple[str, str]] | None = None,
-        max_pieces: int = MAX_PIECES,
-    ):
+    def __init__(self, stock: list[PartCount] | None = None, max_pieces: int = MAX_PIECES):
         self.pieces: dict[str, Piece] = {}
         self._next = 1
-        self.allowed = allowed
+        self.stock: dict[tuple[str, str], int] | None = (
+            None if stock is None else {(line.part, line.color): line.quantity for line in stock}
+        )
         self.max_pieces = min(max_pieces, MAX_PIECES)
 
     def place(self, specs: list[dict]) -> list[dict]:
         """Places each piece that fits, in order: its id, or why it couldn't go."""
         answers: list[dict] = []
         for spec in specs:
+            if problem := problem_with(spec) or self._out_of_stock(spec["part"], spec["color"]):
+                answers.append({"error": problem})
+                continue
             if len(self.pieces) >= self.max_pieces:
                 answers.append(
                     {"error": f"the build already has {self.max_pieces} pieces, the most"}
-                )
-                continue
-            if problem := problem_with(spec):
-                answers.append({"error": problem})
-                continue
-            if self.allowed is not None and (spec["part"], spec["color"]) not in self.allowed:
-                answers.append(
-                    {"error": f"{spec['color']} {spec['part']} isn't one of this idea's parts"}
                 )
                 continue
             piece = Piece(
@@ -178,6 +172,29 @@ class Build:
             self.pieces[piece.id] = piece
             answers.append({"id": piece.id})
         return answers
+
+    def _out_of_stock(self, part: str, color: str) -> str | None:
+        """Why the person has no more of this piece to place, or None."""
+        if self.stock is None:
+            return None
+        have = self.stock.get((part, color), 0)
+        if have == 0:
+            return f"the person has no {color} {part}"
+        placed = sum(p.part == part and p.color == color for p in self.pieces.values())
+        if placed >= have:
+            return f"the person has only {have} {color} {part}, and all are in the build"
+        return None
+
+    def left(self) -> list[dict]:
+        """The pieces still unused, for `validate`'s report."""
+        if self.stock is None:
+            return []
+        placed = Counter((p.part, p.color) for p in self.pieces.values())
+        return [
+            {"part": part, "color": color, "quantity": have - placed[(part, color)]}
+            for (part, color), have in self.stock.items()
+            if have > placed[(part, color)]
+        ]
 
     def remove(self, ids: list[str]) -> list[str]:
         """Removes pieces by id; answers the ids it removed."""
@@ -243,5 +260,5 @@ def layer_steps(pieces: tuple[Piece, ...], locale: Locale) -> list[str]:
 def plain_text(pieces: tuple[Piece, ...], locale: Locale) -> tuple[str, str]:
     """A title and a summary for a build Claude didn't get to name."""
     if locale == "id":
-        return "Rakitan dari gambarmu", f"Rakitan {len(pieces)} keping dari gambarmu."
-    return "Your picture build", f"A {len(pieces)}-piece build of your picture."
+        return "Rakitan dari kepinganmu", f"Rakitan {len(pieces)} keping dari kepinganmu."
+    return "A build from your pieces", f"A {len(pieces)}-piece build from your pieces."
