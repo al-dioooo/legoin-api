@@ -151,12 +151,12 @@ its theme, its title in English / Indonesian, and every piece it needs.
 
 {lines}
 
-When the person owns every piece of a library build in a slot's theme, or all but one or \
-two, use it for that slot, so they see its picture: set `buildId` to its id and `parts` to \
+Choose from the library by comparing these pieces with the person's; that needs no tool \
+call. When the person owns every piece of a library build in a slot's theme, or all but \
+one, use it for that slot, so they see its picture: set `buildId` to its id and `parts` to \
 its pieces exactly, and leave `title`, `summary` and `steps` empty, since the app shows the \
-build's own. Check it with `cek_inventori` like any other build. Use each library build at \
-most once, and not one the person has already seen. For every other build, set `buildId` \
-to "" and write it yourself.
+build's own. Use each library build at most once, and not one the person has already \
+seen. For every other build, set `buildId` to "" and write it yourself.
 """
 
 

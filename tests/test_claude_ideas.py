@@ -122,11 +122,11 @@ def generator(client, budget_s=5.0, effort="low", library=None) -> AnthropicIdea
     )
 
 
-def request(themes=("vehicles",) * 3, locale="en", excluded=()) -> IdeaRequest:
+def request(themes=("vehicles",) * 3, locale="en", excluded=(), inventory=INVENTORY) -> IdeaRequest:
     return IdeaRequest(
         themes=list(themes),
         locale=locale,
-        inventory=INVENTORY,
+        inventory=inventory,
         excluded=list(excluded),
         shown=list(excluded),
     )
@@ -397,6 +397,25 @@ def test_shutting_down_closes_the_client(api):
 # The library (ADR-0010)
 
 
+# The race car's pieces but one of its two yellow rounds.
+NEARLY_A_RACE_CAR = [
+    *INVENTORY,
+    PartCount(part="plate-2x4", color="black", quantity=1),
+    PartCount(part="round-1x1", color="yellow", quantity=1),
+]
+# And the rocket's, the go-kart's and the tractor's.
+NEARLY_FOUR_VEHICLES = [
+    *NEARLY_A_RACE_CAR,
+    PartCount(part="brick-2x2", color="white", quantity=3),
+    PartCount(part="brick-1x2", color="red", quantity=2),
+    PartCount(part="slope-2x2", color="red", quantity=1),
+    PartCount(part="brick-2x3", color="blue", quantity=1),
+    PartCount(part="brick-1x2", color="orange", quantity=1),
+    PartCount(part="brick-2x4", color="green", quantity=1),
+    PartCount(part="brick-1x1", color="black", quantity=4),
+]
+
+
 def pick(build_id: str, theme: str = "vehicles") -> dict:
     """A slot answered with a library build: its id and parts, and no text of its own."""
     build = LIBRARY.get(build_id)
@@ -428,7 +447,7 @@ def test_the_library_is_in_the_cached_prompt_and_the_answers_shape():
 def test_a_slot_answered_with_a_library_build_takes_the_builds_own_text_and_parts(locale):
     client = FakeClient(answer(pick("race-car"), THREE[1], THREE[2]))
 
-    ideas = propose(client, request(locale=locale), library=LIBRARY)
+    ideas = propose(client, request(locale=locale, inventory=NEARLY_A_RACE_CAR), library=LIBRARY)
 
     race_car = LIBRARY.get("race-car")
     assert ideas[0].build_id == "race-car" and ideas[0].key == "template:race-car"
@@ -440,27 +459,45 @@ def test_a_slot_answered_with_a_library_build_takes_the_builds_own_text_and_part
     assert len(client.calls) == 1
 
 
-def test_a_library_build_in_another_theme_already_seen_or_picked_twice_gets_a_repair():
+def test_a_library_build_in_another_theme_seen_picked_twice_or_not_owned_gets_a_repair():
     seen = [ShownIdea("idea_1", "template:tractor", "vehicles", "Tractor")]
     client = FakeClient(
-        answer(pick("rubber-duck"), pick("tractor"), pick("race-car"), pick("race-car")),
-        answer(THREE[0], THREE[1], pick("rocket"), pick("go-kart")),
+        answer(pick("rubber-duck"), pick("tractor"), pick("race-car"), pick("race-car"), THREE[2]),
+        answer(THREE[0], THREE[1], pick("rocket"), pick("go-kart"), pick("delivery-truck")),
     )
+    req = request(themes=["vehicles"] * 5, excluded=seen, inventory=NEARLY_FOUR_VEHICLES)
 
-    ideas = propose(client, request(themes=["vehicles"] * 4, excluded=seen), library=LIBRARY)
+    ideas = propose(client, req, library=LIBRARY)
 
     repair = client.calls[1]["messages"][-1]["content"]
     assert "Build 1: library build rubber-duck is animals, and this slot is vehicles" in repair
     assert "Build 2: the person has already seen library build tractor" in repair
-    assert "Build 3" not in repair
+    assert "Build 3" not in repair and "Build 5" not in repair
     assert "Build 4: the person has already seen library build race-car, or it's used twice" in (
         repair
     )
-    assert [i.build_id for i in ideas] == [None, None, "race-car", "go-kart"]
+    # The truck the repair picked needs 6 pieces the person doesn't have, so it's refused.
+    assert [i.build_id for i in ideas[:4]] == [None, None, "race-car", "go-kart"]
+    assert ideas[4].title == "Blue boat"
+
+
+def test_a_library_build_missing_more_than_one_of_the_persons_pieces_is_refused():
+    client = FakeClient(answer(pick("race-car"), THREE[1], THREE[2]), answer(*THREE))
+
+    ideas = propose(client, library=LIBRARY)
+
+    repair = client.calls[1]["messages"][-1]["content"]
+    assert "Build 1: the person is missing 3 of library build race-car's pieces" in repair
+    assert [i.build_id for i in ideas] == [None, None, None]
 
 
 def test_through_the_api_a_library_build_carries_its_preview_and_cek_inventori(api):
     client = api(FakeClient(answer(pick("race-car"), THREE[1], THREE[2])), library=LIBRARY)
+    added = [
+        {"type": "add", "part": "plate-2x4", "color": "black", "quantity": 1},
+        {"type": "add", "part": "round-1x1", "color": "yellow", "quantity": 1},
+    ]
+    client.patch("/v1/scans/scn_4kd2p9/detections", headers=HEADERS, json={"changes": added})
 
     response = client.post(
         "/v1/scans/scn_4kd2p9/ideas", headers=HEADERS, json={"theme": "vehicles", "locale": "id"}
@@ -470,15 +507,14 @@ def test_through_the_api_a_library_build_carries_its_preview_and_cek_inventori(a
     assert first["title"] == "Mobil balap kecil"
     assert first["buildId"] == "race-car"
     assert first["preview"]["image"].startswith("http://testserver/v1/builds/race-car/")
-    # As the contract's example: the race car against the corrected scan's four pieces.
+    # The service's own cek_inventori: one yellow round short.
     assert first["used"] == [
+        {"part": "round-1x1", "color": "yellow", "quantity": 1},
         {"part": "brick-2x2", "color": "black", "quantity": 1},
         {"part": "brick-2x4", "color": "red", "quantity": 1},
+        {"part": "plate-2x4", "color": "black", "quantity": 1},
         {"part": "slope-2x2", "color": "green", "quantity": 1},
     ]
-    assert first["missing"] == [
-        {"part": "round-1x1", "color": "yellow", "quantity": 2},
-        {"part": "plate-2x4", "color": "black", "quantity": 1},
-    ]
+    assert first["missing"] == [{"part": "round-1x1", "color": "yellow", "quantity": 1}]
     assert "buildId" not in second and "preview" not in second
     client.__exit__(None, None, None)

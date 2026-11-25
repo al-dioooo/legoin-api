@@ -3,13 +3,13 @@
 One request for ideas is a short conversation:
 
 1. Claude gets the cached system prompt and the request (`prompt.py`), and answers in the
-   structured-output shape `IDEAS_SCHEMA`. It may call `cek_inventori`, a strict tool, for
+   structured-output shape `ideas_schema`. It may call `cek_inventori`, a strict tool, for
    at most `MAX_TOOL_ROUNDS` rounds; the last request then offers no tools.
 2. Each build is checked: its slot's theme, a title, a summary, steps, and only catalogue
    parts and colors with quantities of 1 or more. Builds that fail get one repair request.
    A build Claude picked from the library (ADR-0010) by its `buildId` takes the library
    build's own text, steps and parts, which carry its picture; it only has to be in the
-   slot's theme, unseen and not picked twice.
+   slot's theme, unseen, not picked twice, and missing at most one of the person's pieces.
 3. Slots still empty are filled from the templates.
 
 A timeout, an API error, a refusal, a cut-off answer or output that isn't the ideas JSON
@@ -40,7 +40,7 @@ from legoin_api.ideas.generator import (
     run_cek_inventori_tool,
 )
 from legoin_api.ideas.prompt import ideas_schema, repair_prompt, system_prompt, user_prompt
-from legoin_api.inventory import merge
+from legoin_api.inventory import cek_inventori, merge
 from legoin_api.schemas import IdeaTheme, PartCount
 
 log = logging.getLogger(__name__)
@@ -108,8 +108,12 @@ class Usage:
         self.models.add(response.model)
 
 
+MAX_LIBRARY_MISSING = 1
+"""A library build is picked for the person's own pieces: all of them, or all but one."""
+
+
 def library_problems(
-    idea: ClaudeIdea, theme: IdeaTheme, library: BuildLibrary, seen: set[str]
+    idea: ClaudeIdea, theme: IdeaTheme, request: IdeaRequest, library: BuildLibrary, seen: set[str]
 ) -> list[str]:
     """Why a library build Claude picked can't be used in its slot; empty if it can. Its
     text and parts come from the library, so only the pick itself is checked."""
@@ -120,6 +124,9 @@ def library_problems(
         return [f"library build {build.id} is {build.theme}, and this slot is {theme}"]
     if build.key in seen:
         return [f"the person has already seen library build {build.id}, or it's used twice"]
+    _, missing = cek_inventori(build.parts, request.inventory)
+    if (count := sum(line.quantity for line in missing)) > MAX_LIBRARY_MISSING:
+        return [f"the person is missing {count} of library build {build.id}'s pieces"]
     return []
 
 
@@ -272,7 +279,7 @@ class AnthropicIdeaGenerator:
                 continue
             idea = answer.ideas[slot]
             if idea.buildId:
-                wrong = library_problems(idea, theme, self.library, seen)
+                wrong = library_problems(idea, theme, request, self.library, seen)
             else:
                 wrong = problems(idea, theme)
             if wrong:
