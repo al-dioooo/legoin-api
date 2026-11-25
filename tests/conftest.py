@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
 from legoin_api.config import Settings
@@ -14,9 +15,14 @@ def settings(tmp_path) -> Settings:
     return Settings(pipeline="stub", data_dir=tmp_path / "data", ideas_generator="templates")
 
 
+FAST_HASHER = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
+"""Argon2id at its cheapest, so tests that log in stay fast. The app's own default is RFC
+9106's second profile."""
+
+
 @pytest.fixture
 def client(settings):
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings, password_hasher=FAST_HASHER)) as client:
         yield client
 
 

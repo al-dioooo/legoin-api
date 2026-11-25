@@ -34,6 +34,10 @@ ErrorCode = Literal[
     "timeout",
     "unavailable",
     "internal",
+    "unauthorized",
+    "invalid_credentials",
+    "email_taken",
+    "rate_limited",
 ]
 
 # Leaves an optional field out of the answer instead of sending `null`.
@@ -129,6 +133,48 @@ class Scan(WireModel):
 
 class ScanList(WireModel):
     scans: list[Scan]
+
+
+class Account(WireModel):
+    id: Id
+    email: str
+    created_at: str
+
+
+class Session(WireModel):
+    """Only on the wire: what registering or logging in answers."""
+
+    token: str
+    expires_at: str
+    account: Account
+
+
+Email = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, to_lower=True, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    ),
+]
+"""Trimmed and lowercased, so one address is one account however it's typed."""
+
+DeviceId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9._-]{1,128}$")]
+"""The `Legoin-Device-Id` a browser sent before accounts, as the header allowed it."""
+
+
+class Registration(WireModel):
+    email: Email
+    password: Annotated[str, StringConstraints(min_length=8, max_length=128)]
+    device_id: DeviceId | None = None
+
+
+class LogIn(WireModel):
+    """Only presence and length: a password made under older rules still logs in."""
+
+    email: Annotated[
+        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=1, max_length=254)
+    ]
+    password: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+    device_id: DeviceId | None = None
 
 
 class ErrorDetail(WireModel):

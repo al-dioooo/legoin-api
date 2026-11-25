@@ -21,6 +21,10 @@ STATUS: dict[ErrorCode, int] = {
     "timeout": 504,
     "unavailable": 503,
     "internal": 500,
+    "unauthorized": 401,
+    "invalid_credentials": 401,
+    "email_taken": 409,
+    "rate_limited": 429,
 }
 
 

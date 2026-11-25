@@ -125,6 +125,10 @@ Every route needs a `Legoin-Device-Id` header, the contract's placeholder for ac
 
 | Endpoint | What it does |
 | --- | --- |
+| `POST /v1/auth/register` | Makes an account from `email` and `password` (8 to 128 characters) and answers `201` with a session: `token`, `expiresAt` and `account`. `409 email_taken` if the email has one. |
+| `POST /v1/auth/login` | A new session, or `401 invalid_credentials`. After 10 failures for one email in 15 minutes, `429 rate_limited` with `Retry-After`. |
+| `POST /v1/auth/logout` | Ends the session in `Authorization: Bearer`; always `204` |
+| `GET /v1/auth/me` | The session's account, or `401 unauthorized` |
 | `POST /v1/scan-jobs` | Uploads one photo (`multipart/form-data`, part `photo`, JPEG, PNG or WebP, up to 10 MB and 4096 × 4096 pixels) and answers `202` with a running job, or `503 unavailable` when the queue is full |
 | `GET /v1/scan-jobs/{jobId}` | The job: `running` with its stage (`detecting`, `classifying`, `coloring`), `done` with its scan, or `failed` with its error. Poll it every 500 ms. |
 | `DELETE /v1/scan-jobs/{jobId}` | Cancels the job; nothing is saved |
@@ -140,6 +144,8 @@ Every route needs a `Legoin-Device-Id` header, the contract's placeholder for ac
 | `GET /health` | `{"status": "ok", "version", "pipeline", "modelTag"?, "ideas", "ideasModel"?}`, for a host's health check |
 
 Ideas that are a library build carry its `buildId` and `preview` (ADR-0010): every template idea does, and so does a Claude idea when Claude picks a library build. Claude's cached prompt lists each build's id, title and parts; when the person's pieces fit one, it can answer a slot with that `buildId`, and the service uses the build's own text, steps and parts, still runs `cek_inventori`, and adds `preview`. Claude's own builds have no picture. A set is kept with each idea's `buildId` only; `preview` is worked out on the way out, from `LEGOIN_PUBLIC_URL` and the files' versions.
+
+**Accounts** (ADR-0011). Passwords are kept only as Argon2id hashes, at `argon2-cffi`'s defaults (3 passes over 64 MiB), with at most two hashes at once; an unknown email is checked against a stand-in hash, so it takes as long. A session token is `lgn_` and 32 random bytes, kept only as its SHA-256, and lasts 30 days. The failed log-in count is in memory, like scan jobs. An older data directory is migrated to accounts on start (`PRAGMA user_version` 2), with nothing to run by hand.
 
 `tests/contract/` holds the contract's own example bodies, and the tests check the API against them.
 
