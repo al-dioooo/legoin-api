@@ -16,7 +16,8 @@ class PipelineKind(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LEGOIN_", frozen=True)
+    # An empty variable, as `.env.example` leaves some, means "use the default".
+    model_config = SettingsConfigDict(env_prefix="LEGOIN_", env_ignore_empty=True, frozen=True)
 
     pipeline: PipelineKind = PipelineKind.STUB
     """`models` runs the legoin-ml release; `stub` needs no torch or weights."""
